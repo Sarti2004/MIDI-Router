@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- The default-language file. Every translation is checked against it and the fallback chain ends
+       here, so it is required even for a plugin that ships one language. Add a language by adding
+       Localization/Strings.<culture>.resx beside it (Strings.de.resx, Strings.pt-BR.resx).
+       A dotted key becomes a nested class: Widgets.Metronome.Name is Strings.Widgets.Metronome.Name(). -->
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Events.NoteOn.Name" xml:space="preserve">
+    <value>MIDI key pressed</value>
+  </data>
+  <data name="Events.NoteOn.Description" xml:space="preserve">
+    <value>Fires when a key is pressed in Control mode on a keyboard. Only subscribed keys are handled; every other key, and everything in Play mode, passes through.</value>
+  </data>
+  <data name="Events.NoteOff.Name" xml:space="preserve">
+    <value>MIDI key released</value>
+  </data>
+  <data name="Events.NoteOff.Description" xml:space="preserve">
+    <value>Fires when a key is released on a keyboard. A release always goes where its press went.</value>
+  </data>
+  <data name="Events.ControlChange.Name" xml:space="preserve">
+    <value>MIDI controller (CC)</value>
+  </data>
+  <data name="Events.ControlChange.Description" xml:space="preserve">
+    <value>Fires when a controller (knob, fader, pedal, CC) changes on a keyboard. Only the latest value is delivered.</value>
+  </data>
+  <data name="Events.Device.Label" xml:space="preserve">
+    <value>MIDI device</value>
+  </data>
+  <data name="Events.Device.Description" xml:space="preserve">
+    <value>The keyboard to listen to. Leave empty for every keyboard registered.</value>
+  </data>
+  <data name="Events.Device.Placeholder" xml:space="preserve">
+    <value>Any keyboard</value>
+  </data>
+  <data name="Events.Note.Label" xml:space="preserve">
+    <value>Key</value>
+  </data>
+  <data name="Events.Note.Description" xml:space="preserve">
+    <value>The key that triggers this event. Middle C is C4 (60).</value>
+  </data>
+  <data name="Events.Controller.Label" xml:space="preserve">
+    <value>CC number</value>
+  </data>
+  <data name="Events.Controller.Description" xml:space="preserve">
+    <value>The CC number (0-127), e.g. 64 for the sustain pedal.</value>
+  </data>
+  <data name="Events.Velocity.Label" xml:space="preserve">
+    <value>Velocity</value>
+  </data>
+  <data name="Events.Value.Label" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="Events.Channel.Label" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Actions.SetMode.Name" xml:space="preserve">
+    <value>MIDI Router mode</value>
+  </data>
+  <data name="Actions.SetMode.Description" xml:space="preserve">
+    <value>Switches the router to Play or Control mode. In Play everything goes to the your app; in Control subscribed actions are executed.</value>
+  </data>
+  <data name="Actions.SetMode.Toggle" xml:space="preserve">
+    <value>Toggle (Play / Control)</value>
+  </data>
+  <data name="Actions.SetMode.Target.Label" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="Actions.SetMode.Target.Description" xml:space="preserve">
+    <value>The mode to switch to, or Toggle to flip between Play and Control. </value>
+  </data>
+  <data name="Actions.SetMode.StateActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Actions.SetMode.StateInactive" xml:space="preserve">
+    <value>Inactive</value>
+  </data>
+  <data name="Actions.SetMode.UnknownMode" xml:space="preserve">
+    <value>Choose Play, Control or Toggle.</value>
+  </data>
+  <data name="Actions.Routing.Name" xml:space="preserve">
+    <value>MIDI routing on/off</value>
+  </data>
+  <data name="Actions.Routing.Description" xml:space="preserve">
+    <value>Turns the router on or off. Off releases the keyboards so other apps can open them directly.</value>
+  </data>
+  <data name="Actions.Routing.Switch.Label" xml:space="preserve">
+    <value>Switch</value>
+  </data>
+  <data name="Actions.Routing.Switch.Description" xml:space="preserve">
+    <value>Toggle, or always switch on or off.</value>
+  </data>
+  <data name="Actions.Routing.Switch.Toggle" xml:space="preserve">
+    <value>Toggle</value>
+  </data>
+  <data name="Actions.Routing.Switch.On" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="Actions.Routing.Switch.Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Actions.Routing.StateOn" xml:space="preserve">
+    <value>Routing on</value>
+  </data>
+  <data name="Actions.Routing.StateOff" xml:space="preserve">
+    <value>Routing off</value>
+  </data>
+  <data name="ConfigFlow.StepTitle" xml:space="preserve">
+    <value>MIDI Router</value>
+  </data>
+  <data name="ConfigFlow.StepDescriptionWindows" xml:space="preserve">
+    <value>Select the keyboards to route and the loopback port (loopMIDI, or a Windows MIDI Services loopback). In the target app, disable the hardware keyboard and enable loopback port instead.</value>
+  </data>
+  <data name="ConfigFlow.StepDescriptionMac" xml:space="preserve">
+    <value>Select the keyboards to route. The router creates a virtual port. In the target app, disable hardware keyboard and enable the router's virtual port.</value>
+  </data>
+  <data name="ConfigFlow.InputDevices.Label" xml:space="preserve">
+    <value>Keyboards</value>
+  </data>
+  <data name="ConfigFlow.InputDevices.Description" xml:space="preserve">
+    <value>MIDI inputs for the router. Inputs that are not selected are never opened.</value>
+  </data>
+  <data name="ConfigFlow.InputDevices.NotConnected" xml:space="preserve">
+    <value>{device} (not connected)</value>
+  </data>
+  <data name="ConfigFlow.OutputDevice.Label" xml:space="preserve">
+    <value>Output port</value>
+  </data>
+  <data name="ConfigFlow.OutputDevice.DescriptionWindows" xml:space="preserve">
+    <value>Windows cannot create a virtual port for the router: create one with loopMIDI or the Windows MIDI Services settings and select it here.</value>
+  </data>
+  <data name="ConfigFlow.OutputDevice.DescriptionMac" xml:space="preserve">
+    <value>The router's own virtual port is recommended.</value>
+  </data>
+  <data name="ConfigFlow.OutputDevice.Virtual" xml:space="preserve">
+    <value>Virtual port created by MIDI Router</value>
+  </data>
+  <data name="ConfigFlow.VirtualPortName.Label" xml:space="preserve">
+    <value>Virtual port name</value>
+  </data>
+  <data name="ConfigFlow.VirtualPortName.Description" xml:space="preserve">
+    <value>The name the target app shows for the plugin.</value>
+  </data>
+  <data name="ConfigFlow.Errors.NoOutput" xml:space="preserve">
+    <value>Select an output port.</value>
+  </data>
+  <data name="ConfigFlow.Errors.Shortcut" xml:space="preserve">
+    <value>Enter a number between 0 and 127.</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.StepTitle" xml:space="preserve">
+    <value>Mode shortcuts (optional)</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.StepDescription" xml:space="preserve">
+    <value>In Play mode - no action executed; in Control mode subscribed keys will run their actions. Here you can dedicate the key or CC for switching between modes.</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.TypeNote" xml:space="preserve">
+    <value>A key</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.TypeControlChange" xml:space="preserve">
+    <value>Controller (CC)</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.TypeDescription" xml:space="preserve">
+    <value>Mode shortcut on this keyboard.</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.TypeNone" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.NoteDescription" xml:space="preserve">
+    <value>Pick a key you don't need for playing, e.g. the lowest A0 (21) or highest C8 (108).</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.Note" xml:space="preserve">
+    <value>Key</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.Controller" xml:space="preserve">
+    <value>Controller number (CC)</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.ControllerDescription" xml:space="preserve">
+    <value>64 sustain, 66 sostenuto, 67 soft pedal. Counts as pressed from value 64.</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.Learn" xml:space="preserve">
+    <value>Learn from the keyboard</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.Listening" xml:space="preserve">
+    <value>Listening: press the key or CC button on {device} you want as the shortcut. Click ✕ to stop.</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.Action" xml:space="preserve">
+    <value>When pressed</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.ActionToggle" xml:space="preserve">
+    <value>Toggle Play / Control</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.ActionHold" xml:space="preserve">
+    <value>Control while held, back to Play on release</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.ActionPlay" xml:space="preserve">
+    <value>Switch to Play</value>
+  </data>
+  <data name="ConfigFlow.Shortcuts.ActionControl" xml:space="preserve">
+    <value>Switch to Control</value>
+  </data>
+  <data name="Issues.Configure" xml:space="preserve">
+    <value>Open settings</value>
+  </data>
+  <data name="Issues.NotConfigured.Title" xml:space="preserve">
+    <value>No keyboards selected</value>
+  </data>
+  <data name="Issues.NotConfigured.Description" xml:space="preserve">
+    <value>The router passes nothing through until you select at least one keyboard in its settings.</value>
+  </data>
+  <data name="Issues.OutputNotConfigured.Title" xml:space="preserve">
+    <value>No output port selected</value>
+  </data>
+  <data name="Issues.OutputNotConfigured.Description" xml:space="preserve">
+    <value>Select the loopback port for the target app.</value>
+  </data>
+  <data name="Issues.VirtualOutputUnsupported.Title" xml:space="preserve">
+    <value>Virtual port not supported</value>
+  </data>
+  <data name="Issues.VirtualOutputUnsupported.Description" xml:space="preserve">
+    <value>This system cannot create a virtual MIDI port. Create a loopback port (loopMIDI or Windows MIDI Services) and select it as the output.</value>
+  </data>
+  <data name="Issues.OutputMissing.Title" xml:space="preserve">
+    <value>Output port '{port}' not found</value>
+  </data>
+  <data name="Issues.OutputMissing.Description" xml:space="preserve">
+    <value>Start the loopback app (e.g. loopMIDI) or recreate the port. The router reconnects by itself.</value>
+  </data>
+  <data name="Issues.OutputFailed.Title" xml:space="preserve">
+    <value>Output port '{port}' could not be opened</value>
+  </data>
+  <data name="Issues.OutputFailed.Description" xml:space="preserve">
+    <value>{error}</value>
+  </data>
+  <data name="Issues.InputMissing.Title" xml:space="preserve">
+    <value>Keyboard '{device}' not connected</value>
+  </data>
+  <data name="Issues.InputMissing.Description" xml:space="preserve">
+    <value>The router opens it as soon as it is plugged in or wakes up.</value>
+  </data>
+  <data name="Issues.InputBusy.Title" xml:space="preserve">
+    <value>Keyboard '{device}' is in use</value>
+  </data>
+  <data name="Issues.InputBusy.Description" xml:space="preserve">
+    <value>Another app holds the keyboard. Disable it in that app (for Dorico: Preferences &gt; Play &gt; MIDI Input Devices); the router retries by itself.</value>
+  </data>
+  <data name="Issues.InputIsRouterOutput.Title" xml:space="preserve">
+    <value>'{device}' is the router's own output</value>
+  </data>
+  <data name="Issues.InputIsRouterOutput.Description" xml:space="preserve">
+    <value>Reading the router's output back would create a feedback loop, so this input is ignored. Remove it from the keyboards.</value>
+  </data>
+</root>

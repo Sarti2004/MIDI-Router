@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "targets": {
+    "win-x64": {
+      "executable": "dotnet",
+      "arguments": [
+        "publish",
+        "MIDI-Router.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "win-x64",
+        "-p:UseAppHost=false",
+        "-o",
+        "bin/publish/win-x64"
+      ],
+      "output": "bin/publish/win-x64"
+    },
+    "osx-arm64": {
+      "executable": "dotnet",
+      "arguments": [
+        "publish",
+        "MIDI-Router.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "osx-arm64",
+        "-p:UseAppHost=false",
+        "-o",
+        "bin/publish/osx-arm64"
+      ],
+      "output": "bin/publish/osx-arm64"
+    }
+  }
+}
