@@ -136,6 +136,8 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 		{
 			OutputDevice = output,
 			VirtualPortName = virtualName,
+			ModeSound = bool.TryParse(Text(input, RouterConfig.Keys.ModeSound), out var sound) ? sound : current.ModeSound,
+			StartMode = ModeController.Parse(Text(input, RouterConfig.Keys.StartMode)) ?? current.StartMode,
 		};
 
 		// Drop a selection that is the output itself: need more thinking, still buggy;
@@ -254,6 +256,18 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 				.. OperatingSystem.IsMacOS()
 					? [virtualNameField.OnlyWhen(RouterConfig.Keys.OutputDevice, RouterConfig.VirtualOutput)]
 					: Array.Empty<ActionParameter>(),
+				ActionParameter.Choice(
+					RouterConfig.Keys.StartMode,
+					options: [.. ModeController.Names.Select(mode => new ActionParameterOption { Value = mode, Label = LocalizedText.FromLiteral(mode) })],
+					label: Strings.ConfigFlow.StartMode.Label(),
+					description: Strings.ConfigFlow.StartMode.Description(),
+					defaultValue: ModeController.Name(config.StartMode),
+					required: true),
+				ActionParameter.Toggle(
+					RouterConfig.Keys.ModeSound,
+					label: Strings.ConfigFlow.ModeSound.Label(),
+					description: Strings.ConfigFlow.ModeSound.Description(),
+					defaultValue: config.ModeSound),
 			],
 		};
 	}

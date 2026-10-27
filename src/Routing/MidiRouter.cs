@@ -29,6 +29,7 @@ internal sealed class MidiRouter : IDisposable
 	private RouterStatus _status = RouterStatus.Starting;
 	private bool _enabled = true;
 	private bool _started;
+	private bool _modeStarted;
 	private bool _watching;
 	private bool _disposed;
 	private long _lastPoll;
@@ -42,6 +43,7 @@ internal sealed class MidiRouter : IDisposable
 		_engine = new RoutingEngine(Modes, _output.Send, _dispatcher.Post);
 		_inputs = new InputDevices(_engine.Process, _engine.Release);
 		_pollTimer = new Timer(_ => Poll(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+		Modes.Changed += OnModeChanged;
 	}
 
 	public event Action? StatusChanged;
@@ -126,6 +128,13 @@ internal sealed class MidiRouter : IDisposable
 	{
 		lock (_stateLock)
 		{
+			// Only the first config sets the mode: later saves re-apply the config and must not switch it.
+			if (!_modeStarted)
+			{
+				_modeStarted = true;
+				Modes.Start(config.StartMode);
+			}
+
 			_config = config;
 			RebuildTableLocked();
 		}
@@ -189,6 +198,14 @@ internal sealed class MidiRouter : IDisposable
 		}
 	}
 
+	private void OnModeChanged()
+	{
+		if (Config.ModeSound)
+		{
+			ModeSound.Play(Modes.Current, _logger);
+		}
+	}
+
 	public void Dispose()
 	{
 		lock (_pollLock)
@@ -199,6 +216,7 @@ internal sealed class MidiRouter : IDisposable
 			}
 
 			_disposed = true;
+			Modes.Changed -= OnModeChanged;
 			_pollTimer.Dispose();
 			if (_watching)
 			{

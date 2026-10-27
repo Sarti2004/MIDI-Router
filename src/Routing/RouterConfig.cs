@@ -6,7 +6,9 @@ internal sealed record RouterConfig(
 	IReadOnlyList<string> InputDevices,
 	string OutputDevice,
 	string VirtualPortName,
-	IReadOnlyList<ModeShortcut> Shortcuts)
+	IReadOnlyList<ModeShortcut> Shortcuts,
+	bool ModeSound = false,
+	RouterMode StartMode = RouterMode.Play)
 {
 	public const string VirtualOutput = "virtual";
 	public const string DefaultVirtualPortName = "MIDI Router";
@@ -20,8 +22,10 @@ internal sealed record RouterConfig(
 		public const string OutputDevice = "OutputDevice";
 		public const string VirtualPortName = "VirtualPortName";
 		public const string Shortcuts = "Shortcuts";
+		public const string ModeSound = "ModeSound";
+		public const string StartMode = "StartMode";
 
-		public static readonly IReadOnlyList<string> All = [InputDevices, OutputDevice, VirtualPortName, Shortcuts];
+		public static readonly IReadOnlyList<string> All = [InputDevices, OutputDevice, VirtualPortName, Shortcuts, ModeSound, StartMode];
 	}
 
 	public static RouterConfig Default { get; } = new(
@@ -42,7 +46,9 @@ internal sealed record RouterConfig(
 			ParseList(read(Keys.InputDevices)),
 			read(Keys.OutputDevice)?.Trim() is { Length: > 0 } output ? output : Default.OutputDevice,
 			string.IsNullOrEmpty(virtualName) ? DefaultVirtualPortName : virtualName,
-			ParseShortcuts(read(Keys.Shortcuts)));
+			ParseShortcuts(read(Keys.Shortcuts)),
+			bool.TryParse(read(Keys.ModeSound), out var sound) && sound,
+			ModeController.Parse(read(Keys.StartMode)) ?? RouterMode.Play);
 	}
 
 	public IReadOnlyDictionary<string, string> ToStrings() => new Dictionary<string, string>
@@ -51,6 +57,8 @@ internal sealed record RouterConfig(
 		[Keys.OutputDevice] = OutputDevice,
 		[Keys.VirtualPortName] = VirtualPortName,
 		[Keys.Shortcuts] = JsonSerializer.Serialize(Shortcuts.Select(ShortcutDto.From), Json),
+		[Keys.ModeSound] = ModeSound ? "true" : "false",
+		[Keys.StartMode] = ModeController.Name(StartMode),
 	};
 
 	public static IReadOnlyList<string> ParseList(string? text)

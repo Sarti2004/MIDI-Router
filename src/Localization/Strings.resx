@@ -151,6 +151,18 @@
   <data name="ConfigFlow.VirtualPortName.Description" xml:space="preserve">
     <value>The name the target app shows for the plugin.</value>
   </data>
+  <data name="ConfigFlow.StartMode.Label" xml:space="preserve">
+    <value>Start mode</value>
+  </data>
+  <data name="ConfigFlow.StartMode.Description" xml:space="preserve">
+    <value>The mode the router is in when Macro Deck starts.</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Label" xml:space="preserve">
+    <value>Sound on mode switch</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Description" xml:space="preserve">
+    <value>Beeps once for Play and twice for Control</value>
+  </data>
   <data name="ConfigFlow.Errors.NoOutput" xml:space="preserve">
     <value>Select an output port.</value>
   </data>
