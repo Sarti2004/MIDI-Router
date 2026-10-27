@@ -136,7 +136,7 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 		{
 			OutputDevice = output,
 			VirtualPortName = virtualName,
-			ModeSound = bool.TryParse(Text(input, RouterConfig.Keys.ModeSound), out var sound) ? sound : current.ModeSound,
+			ModeSound = ModeSound.Parse(Text(input, RouterConfig.Keys.ModeSound)) ?? current.ModeSound,
 			StartMode = ModeController.Parse(Text(input, RouterConfig.Keys.StartMode)) ?? current.StartMode,
 		};
 
@@ -263,11 +263,18 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 					description: Strings.ConfigFlow.StartMode.Description(),
 					defaultValue: ModeController.Name(config.StartMode),
 					required: true),
-				ActionParameter.Toggle(
+				ActionParameter.Choice(
 					RouterConfig.Keys.ModeSound,
+					options:
+					[
+						new ActionParameterOption { Value = ModeSound.Name(ModeSoundStyle.Off), Label = Strings.ConfigFlow.ModeSound.Off() },
+						new ActionParameterOption { Value = ModeSound.Name(ModeSoundStyle.Beep), Label = Strings.ConfigFlow.ModeSound.Beep() },
+						new ActionParameterOption { Value = ModeSound.Name(ModeSoundStyle.Announce), Label = Strings.ConfigFlow.ModeSound.Announce() },
+					],
 					label: Strings.ConfigFlow.ModeSound.Label(),
 					description: Strings.ConfigFlow.ModeSound.Description(),
-					defaultValue: config.ModeSound),
+					defaultValue: ModeSound.Name(config.ModeSound),
+					required: true),
 			],
 		};
 	}

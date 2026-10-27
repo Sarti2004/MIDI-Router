@@ -200,9 +200,9 @@ internal sealed class MidiRouter : IDisposable
 
 	private void OnModeChanged()
 	{
-		if (Config.ModeSound)
+		if (Config.ModeSound is not ModeSoundStyle.Off and var style)
 		{
-			ModeSound.Play(Modes.Current, _logger);
+			ModeSound.Play(style, Modes.Current, _logger);
 		}
 	}
 

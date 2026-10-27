@@ -161,7 +161,16 @@
     <value>Sound on mode switch</value>
   </data>
   <data name="ConfigFlow.ModeSound.Description" xml:space="preserve">
-    <value>Beeps once for Play and twice for Control</value>
+    <value></value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Beep" xml:space="preserve">
+    <value>Beep</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Announce" xml:space="preserve">
+    <value>Announce</value>
   </data>
   <data name="ConfigFlow.Errors.NoOutput" xml:space="preserve">
     <value>Select an output port.</value>

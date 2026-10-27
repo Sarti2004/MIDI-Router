@@ -40,6 +40,7 @@
         <Content Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\icon.svg" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\icon.png" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="Assets\Audio\*.wav" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>

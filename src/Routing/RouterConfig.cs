@@ -7,7 +7,7 @@ internal sealed record RouterConfig(
 	string OutputDevice,
 	string VirtualPortName,
 	IReadOnlyList<ModeShortcut> Shortcuts,
-	bool ModeSound = false,
+	ModeSoundStyle ModeSound = ModeSoundStyle.Off,
 	RouterMode StartMode = RouterMode.Play)
 {
 	public const string VirtualOutput = "virtual";
@@ -47,7 +47,7 @@ internal sealed record RouterConfig(
 			read(Keys.OutputDevice)?.Trim() is { Length: > 0 } output ? output : Default.OutputDevice,
 			string.IsNullOrEmpty(virtualName) ? DefaultVirtualPortName : virtualName,
 			ParseShortcuts(read(Keys.Shortcuts)),
-			bool.TryParse(read(Keys.ModeSound), out var sound) && sound,
+			Routing.ModeSound.Parse(read(Keys.ModeSound)) ?? ModeSoundStyle.Off,
 			ModeController.Parse(read(Keys.StartMode)) ?? RouterMode.Play);
 	}
 
@@ -57,7 +57,7 @@ internal sealed record RouterConfig(
 		[Keys.OutputDevice] = OutputDevice,
 		[Keys.VirtualPortName] = VirtualPortName,
 		[Keys.Shortcuts] = JsonSerializer.Serialize(Shortcuts.Select(ShortcutDto.From), Json),
-		[Keys.ModeSound] = ModeSound ? "true" : "false",
+		[Keys.ModeSound] = Routing.ModeSound.Name(ModeSound),
 		[Keys.StartMode] = ModeController.Name(StartMode),
 	};
 
