@@ -205,8 +205,10 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 				.Select(name => new ActionParameterOption { Value = name, Label = Strings.ConfigFlow.InputDevices.NotConnected(name) }))
 			.ToList();
 
+		var supportsVirtual = OutputPort.SupportsVirtual();
 		var outputOptions = new List<ActionParameterOption>();
-		if (OperatingSystem.IsMacOS())
+		// Keep a saved virtual choice even where it stopped working, so saving does not drop it.
+		if (supportsVirtual || config.UsesVirtualOutput)
 		{
 			outputOptions.Add(new ActionParameterOption { Value = RouterConfig.VirtualOutput, Label = Strings.ConfigFlow.OutputDevice.Virtual() });
 		}
@@ -238,9 +240,9 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 		{
 			StepId = SettingsStepId,
 			Title = Strings.ConfigFlow.StepTitle(),
-			Description = OperatingSystem.IsMacOS()
-				? Strings.ConfigFlow.StepDescriptionMac()
-				: Strings.ConfigFlow.StepDescriptionWindows(),
+			Description = supportsVirtual
+				? Strings.ConfigFlow.StepDescriptionVirtual()
+				: Strings.ConfigFlow.StepDescriptionLoopback(),
 			Fields =
 			[
 				devicesField,
@@ -248,12 +250,12 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 					RouterConfig.Keys.OutputDevice,
 					options: outputOptions,
 					label: Strings.ConfigFlow.OutputDevice.Label(),
-					description: OperatingSystem.IsMacOS()
-						? Strings.ConfigFlow.OutputDevice.DescriptionMac()
-						: Strings.ConfigFlow.OutputDevice.DescriptionWindows(),
-					defaultValue: config.OutputDevice.Length > 0 ? config.OutputDevice : null,
+					description: supportsVirtual
+						? Strings.ConfigFlow.OutputDevice.DescriptionVirtual()
+						: Strings.ConfigFlow.OutputDevice.DescriptionLoopback(),
+					defaultValue: config.OutputDevice.Length > 0 ? config.OutputDevice : supportsVirtual ? RouterConfig.VirtualOutput : null,
 					required: true),
-				.. OperatingSystem.IsMacOS()
+				.. supportsVirtual || config.UsesVirtualOutput
 					? [virtualNameField.OnlyWhen(RouterConfig.Keys.OutputDevice, RouterConfig.VirtualOutput)]
 					: Array.Empty<ActionParameter>(),
 				ActionParameter.Choice(

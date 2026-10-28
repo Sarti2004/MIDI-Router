@@ -6,6 +6,8 @@
         <RootNamespace>MIDIRouter</RootNamespace>
         <UserSecretsId>MIDI-Router-PluginDevelopment</UserSecretsId>
         <TargetFrameworks>net10.0</TargetFrameworks>
+        <!-- Routing/WindowsLoopback.cs calls Windows MIDI Services through raw WinRT vtables. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <!-- Microsoft.NET.Sdk plus this framework reference, not Microsoft.NET.Sdk.Web: a plugin is a

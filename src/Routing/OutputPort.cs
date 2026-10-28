@@ -1,5 +1,6 @@
 using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Multimedia;
+using System.Runtime.Versioning;
 
 namespace MIDIRouter.Routing;
 
@@ -17,12 +18,16 @@ internal sealed class OutputPort : IDisposable
 	private readonly Lock _sendLock = new();
 	private OutputDevice? _device;
 	private VirtualDevice? _virtual;
+	private WindowsLoopback? _loopback;
 	private string? _openedAs;
 	private volatile bool _faulted;
 
 	public OutputState State { get; private set; } = OutputState.NotConfigured;
 
 	public string? LastError { get; private set; }
+
+	public static bool SupportsVirtual() =>
+		OperatingSystem.IsMacOS() || (OperatingSystem.IsWindows() && WindowsLoopback.IsAvailable());
 
 	public void Send(MidiEvent midiEvent)
 	{
@@ -51,13 +56,20 @@ internal sealed class OutputPort : IDisposable
 		var wanted = config.UsesVirtualOutput ? "virtual:" + config.VirtualPortName : config.OutputDevice;
 		if (_device is not null && !_faulted && string.Equals(_openedAs, wanted, StringComparison.Ordinal))
 		{
-			if (config.UsesVirtualOutput || present.Contains(config.OutputDevice))
+			if (StillPresent(config, present))
 			{
 				return State = OutputState.Open;
 			}
 		}
 
 		Close();
+
+		if (config.UsesVirtualOutput && OperatingSystem.IsWindows())
+		{
+			return EnsureLoopback(config.VirtualPortName, present, wanted);
+		}
+
+		RemoveLoopback();
 
 		if (config.UsesVirtualOutput)
 		{
@@ -100,7 +112,71 @@ internal sealed class OutputPort : IDisposable
 		return State = OutputState.Open;
 	}
 
-	public void Dispose() => Close();
+	public void Dispose()
+	{
+		Close();
+		RemoveLoopback();
+	}
+
+	private static bool StillPresent(RouterConfig config, IReadOnlyCollection<string> present)
+	{
+		if (!config.UsesVirtualOutput)
+		{
+			return present.Contains(config.OutputDevice);
+		}
+
+		return !OperatingSystem.IsWindows() || WindowsLoopback.FindPort(config.VirtualPortName, present) is not null;
+	}
+
+	[SupportedOSPlatform("windows")]
+	private OutputState EnsureLoopback(string name, IReadOnlyCollection<string> present, string wanted)
+	{
+		if (_loopback is { } current && (!string.Equals(current.Name, name, StringComparison.Ordinal) || !current.Exists()))
+		{
+			RemoveLoopback();
+		}
+
+		try
+		{
+			_loopback ??= WindowsLoopback.TryCreate(name);
+		}
+		catch (InvalidOperationException ex)
+		{
+			return Failed(ex);
+		}
+
+		if (_loopback is null)
+		{
+			return State = OutputState.VirtualUnsupported;
+		}
+
+		// The service adds the MIDI 1.0 port a moment after the loopback; the next poll opens it.
+		if (WindowsLoopback.FindPort(name, present) is not { } port)
+		{
+			return State = OutputState.Missing;
+		}
+
+		try
+		{
+			Opened(OutputDevice.GetByName(port), wanted);
+		}
+		catch (Exception ex) when (ex is MidiDeviceException or ArgumentException or InvalidOperationException)
+		{
+			return Failed(ex);
+		}
+
+		LastError = null;
+		return State = OutputState.Open;
+	}
+
+	private void RemoveLoopback()
+	{
+		if (OperatingSystem.IsWindows() && _loopback is { } loopback)
+		{
+			_loopback = null;
+			loopback.Dispose();
+		}
+	}
 
 	private void Opened(OutputDevice device, string openedAs)
 	{

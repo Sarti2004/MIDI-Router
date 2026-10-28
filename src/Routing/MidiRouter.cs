@@ -316,7 +316,7 @@ internal sealed class MidiRouter : IDisposable
 				enabled = _enabled;
 			}
 
-			var outputState = _output.Ensure(config, config.UsesVirtualOutput ? [] : GetOutputNames());
+			var outputState = _output.Ensure(config, config.UsesVirtualOutput && !OperatingSystem.IsWindows() ? [] : GetOutputNames());
 			var present = enabled && config.InputDevices.Count > 0 ? InputDevices.GetPresentNames() : [];
 			var inputs = _inputs.Refresh(config.InputDevices, enabled, present, config.OutputName);
 			status = new RouterStatus(enabled, _inputs.OpenCount, outputState, CollectProblems(config, outputState, inputs));

@@ -118,10 +118,10 @@
   <data name="ConfigFlow.StepTitle" xml:space="preserve">
     <value>MIDI Router</value>
   </data>
-  <data name="ConfigFlow.StepDescriptionWindows" xml:space="preserve">
+  <data name="ConfigFlow.StepDescriptionLoopback" xml:space="preserve">
     <value>Select the keyboards to route and the loopback port (loopMIDI, or a Windows MIDI Services loopback). In the target app, disable the hardware keyboard and enable loopback port instead.</value>
   </data>
-  <data name="ConfigFlow.StepDescriptionMac" xml:space="preserve">
+  <data name="ConfigFlow.StepDescriptionVirtual" xml:space="preserve">
     <value>Select the keyboards to route. The router creates a virtual port. In the target app, disable hardware keyboard and enable the router's virtual port.</value>
   </data>
   <data name="ConfigFlow.InputDevices.Label" xml:space="preserve">
@@ -136,10 +136,10 @@
   <data name="ConfigFlow.OutputDevice.Label" xml:space="preserve">
     <value>Output port</value>
   </data>
-  <data name="ConfigFlow.OutputDevice.DescriptionWindows" xml:space="preserve">
-    <value>Windows cannot create a virtual port for the router: create one with loopMIDI or the Windows MIDI Services settings and select it here.</value>
+  <data name="ConfigFlow.OutputDevice.DescriptionLoopback" xml:space="preserve">
+    <value>This PC cannot create a virtual port for the router (it needs Windows MIDI Services): create one with loopMIDI or the Windows MIDI Services settings and select it here.</value>
   </data>
-  <data name="ConfigFlow.OutputDevice.DescriptionMac" xml:space="preserve">
+  <data name="ConfigFlow.OutputDevice.DescriptionVirtual" xml:space="preserve">
     <value>The router's own virtual port is recommended.</value>
   </data>
   <data name="ConfigFlow.OutputDevice.Virtual" xml:space="preserve">
