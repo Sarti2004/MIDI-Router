@@ -43,17 +43,47 @@ internal sealed unsafe partial class WindowsLoopback : IDisposable
 
 	public string Name { get; }
 
+	// TEMP: Windows debug
+	public static Serilog.ILogger? Logger { get; set; }
+
+	private static string? _lastAvailability;
+
 	// False on Windows without MIDI Services (class not registered) or with the transport turned off.
 	public static bool IsAvailable()
 	{
+		bool? service = null, transport = null;
+		string? error = null;
 		try
 		{
-			return EnsureServiceAvailable() && IsTransportAvailable();
+			service = EnsureServiceAvailable();
+			if (service == true)
+			{
+				transport = IsTransportAvailable();
+			}
+
+			return transport == true;
 		}
-		catch (AbiException)
+		catch (AbiException ex)
 		{
+			error = ex.Message;
 			return false;
 		}
+		finally
+		{
+			LogAvailability(service, transport, error);
+		}
+	}
+
+	// TEMP: debug
+	private static void LogAvailability(bool? service, bool? transport, string? error)
+	{
+		var text = $"ServiceAvailable={service?.ToString() ?? "n/a"}, TransportAvailable={transport?.ToString() ?? "n/a"}, Error={error ?? "none"}";
+		if (string.Equals(Interlocked.Exchange(ref _lastAvailability, text), text, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		Logger?.Information("Windows MIDI Services basic loopback: {Availability}", text);
 	}
 
 	// Null when MIDI Services can't make loopbacks here. Throws InvalidOperationException when it can

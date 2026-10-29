@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "com.sarti2004.midi-router",
   "name": "MIDI Router",
-  "version": "0.1.0-beta.28",
+  "version": "0.1.0-beta.29",
   "description": "Simple MIDI router for Macro Deck. Use it to trigger MD actions from MIDI devices",
   "homepage": "https://github.com/Sarti2004/MIDI-Router",
   "repository": "https://github.com/Sarti2004/MIDI-Router.git",

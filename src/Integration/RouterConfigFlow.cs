@@ -214,7 +214,9 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 		}
 
 		var outputs = MidiRouter.GetOutputNames();
-		outputOptions.AddRange(outputs.Order(StringComparer.OrdinalIgnoreCase)
+		outputOptions.AddRange(outputs
+			.Where(name => !IsBuiltInSynth(name) || string.Equals(name, config.OutputDevice, StringComparison.Ordinal))
+			.Order(StringComparer.OrdinalIgnoreCase)
 			.Select(name => new ActionParameterOption { Value = name, Label = LocalizedText.FromLiteral(name) }));
 		if (!config.UsesVirtualOutput && config.OutputDevice.Length > 0 && !outputs.Contains(config.OutputDevice, StringComparer.Ordinal))
 		{
@@ -349,6 +351,9 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 	// Fields are shown by the keyboard's position on the first page; a device name is not a safe (can be changed)).
 	private static string FieldName(int keyboard, string field) =>
 		string.Create(CultureInfo.InvariantCulture, $"shortcut-{keyboard}-{field}");
+
+	private static bool IsBuiltInSynth(string name) =>
+		name.StartsWith("Microsoft GS Wavetable", StringComparison.OrdinalIgnoreCase);
 
 	private static ActionParameter WithDefault(ActionParameter parameter, object value)
 	{
