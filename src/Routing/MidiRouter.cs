@@ -1,3 +1,5 @@
+using Melanchall.DryWetMidi.Common;
+using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Multimedia;
 using Serilog;
 
@@ -147,6 +149,19 @@ internal sealed class MidiRouter : IDisposable
 
 		Start();
 		Poll();
+	}
+
+	// Fire-and-forget: dropped when the output port is not open.
+	public void SendControlChange(int channel, int controller, int value)
+	{
+		var midiChannel = (FourBitNumber)(channel - 1);
+		_output.Send(new ControlChangeEvent((SevenBitNumber)controller, (SevenBitNumber)value) { Channel = midiChannel });
+
+		// The router does not track these, so a pedal pressed here is released at once and can't get stuck in the app.
+		if (HeldState.IsPedal(controller) && value > 0)
+		{
+			_output.Send(new ControlChangeEvent((SevenBitNumber)controller, SevenBitNumber.MinValue) { Channel = midiChannel });
+		}
 	}
 
 	public void SetEnabled(bool enabled)

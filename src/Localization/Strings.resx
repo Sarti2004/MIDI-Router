@@ -115,6 +115,21 @@
   <data name="Actions.Routing.StateOff" xml:space="preserve">
     <value>Routing off</value>
   </data>
+  <data name="Actions.SendCc.Name" xml:space="preserve">
+    <value>Send MIDI CC</value>
+  </data>
+  <data name="Actions.SendCc.Description" xml:space="preserve">
+    <value>Sends CC message to the router's output port.</value>
+  </data>
+  <data name="Actions.SendCc.Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Actions.SendCc.Controller" xml:space="preserve">
+    <value>Controller (CC)</value>
+  </data>
+  <data name="Actions.SendCc.Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
   <data name="ConfigFlow.StepTitle" xml:space="preserve">
     <value>MIDI Router</value>
   </data>
