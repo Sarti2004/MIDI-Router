@@ -26,8 +26,8 @@ internal sealed record RouterProblem(ProblemKind Kind, string Subject, string? D
 
 	public ProblemSeverity Severity => Kind switch
 	{
-		ProblemKind.NotConfigured or ProblemKind.InputPartialMatch => ProblemSeverity.Info,
-		ProblemKind.InputMissing or ProblemKind.InputBusy or ProblemKind.InputIsRouterOutput => ProblemSeverity.Warning,
+		ProblemKind.NotConfigured or ProblemKind.InputPartialMatch or ProblemKind.InputMissing => ProblemSeverity.Info,
+		ProblemKind.InputBusy or ProblemKind.InputIsRouterOutput => ProblemSeverity.Warning,
 		_ => ProblemSeverity.Error,
 	};
 

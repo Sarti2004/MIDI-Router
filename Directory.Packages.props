@@ -7,7 +7,7 @@
         <!-- One knob for every Macro Deck package, so a build against a locally packed SDK is
              `dotnet build -p:MacroDeckSdkVersion=<version>` and nothing else - see README.md. Pinned
              rather than floated, because a 3.0.0-* float picks preview builds over newer beta ones. -->
-        <MacroDeckSdkVersion Condition="'$(MacroDeckSdkVersion)' == ''">3.0.0-beta.19</MacroDeckSdkVersion>
+        <MacroDeckSdkVersion Condition="'$(MacroDeckSdkVersion)' == ''">3.0.0</MacroDeckSdkVersion>
     </PropertyGroup>
 
     <ItemGroup>

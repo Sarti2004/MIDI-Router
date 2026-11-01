@@ -136,6 +136,8 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 		{
 			OutputDevice = output,
 			VirtualPortName = virtualName,
+			ModeSound = ModeSound.Parse(Text(input, RouterConfig.Keys.ModeSound)) ?? current.ModeSound,
+			StartMode = ModeController.Parse(Text(input, RouterConfig.Keys.StartMode)) ?? current.StartMode,
 		};
 
 		// Drop a selection that is the output itself: need more thinking, still buggy;
@@ -203,14 +205,18 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 				.Select(name => new ActionParameterOption { Value = name, Label = Strings.ConfigFlow.InputDevices.NotConnected(name) }))
 			.ToList();
 
+		var supportsVirtual = OutputPort.SupportsVirtual();
 		var outputOptions = new List<ActionParameterOption>();
-		if (OperatingSystem.IsMacOS())
+		// Keep a saved virtual choice even where it stopped working, so saving does not drop it.
+		if (supportsVirtual || config.UsesVirtualOutput)
 		{
 			outputOptions.Add(new ActionParameterOption { Value = RouterConfig.VirtualOutput, Label = Strings.ConfigFlow.OutputDevice.Virtual() });
 		}
 
 		var outputs = MidiRouter.GetOutputNames();
-		outputOptions.AddRange(outputs.Order(StringComparer.OrdinalIgnoreCase)
+		outputOptions.AddRange(outputs
+			.Where(name => !IsBuiltInSynth(name) || string.Equals(name, config.OutputDevice, StringComparison.Ordinal))
+			.Order(StringComparer.OrdinalIgnoreCase)
 			.Select(name => new ActionParameterOption { Value = name, Label = LocalizedText.FromLiteral(name) }));
 		if (!config.UsesVirtualOutput && config.OutputDevice.Length > 0 && !outputs.Contains(config.OutputDevice, StringComparer.Ordinal))
 		{
@@ -236,9 +242,9 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 		{
 			StepId = SettingsStepId,
 			Title = Strings.ConfigFlow.StepTitle(),
-			Description = OperatingSystem.IsMacOS()
-				? Strings.ConfigFlow.StepDescriptionMac()
-				: Strings.ConfigFlow.StepDescriptionWindows(),
+			Description = supportsVirtual
+				? Strings.ConfigFlow.StepDescriptionVirtual()
+				: Strings.ConfigFlow.StepDescriptionLoopback(),
 			Fields =
 			[
 				devicesField,
@@ -246,14 +252,33 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 					RouterConfig.Keys.OutputDevice,
 					options: outputOptions,
 					label: Strings.ConfigFlow.OutputDevice.Label(),
-					description: OperatingSystem.IsMacOS()
-						? Strings.ConfigFlow.OutputDevice.DescriptionMac()
-						: Strings.ConfigFlow.OutputDevice.DescriptionWindows(),
-					defaultValue: config.OutputDevice.Length > 0 ? config.OutputDevice : null,
+					description: supportsVirtual
+						? Strings.ConfigFlow.OutputDevice.DescriptionVirtual()
+						: Strings.ConfigFlow.OutputDevice.DescriptionLoopback(),
+					defaultValue: config.OutputDevice.Length > 0 ? config.OutputDevice : supportsVirtual ? RouterConfig.VirtualOutput : null,
 					required: true),
-				.. OperatingSystem.IsMacOS()
+				.. supportsVirtual || config.UsesVirtualOutput
 					? [virtualNameField.OnlyWhen(RouterConfig.Keys.OutputDevice, RouterConfig.VirtualOutput)]
 					: Array.Empty<ActionParameter>(),
+				ActionParameter.Choice(
+					RouterConfig.Keys.StartMode,
+					options: [.. ModeController.Names.Select(mode => new ActionParameterOption { Value = mode, Label = LocalizedText.FromLiteral(mode) })],
+					label: Strings.ConfigFlow.StartMode.Label(),
+					description: Strings.ConfigFlow.StartMode.Description(),
+					defaultValue: ModeController.Name(config.StartMode),
+					required: true),
+				ActionParameter.Choice(
+					RouterConfig.Keys.ModeSound,
+					options:
+					[
+						new ActionParameterOption { Value = ModeSound.Name(ModeSoundStyle.Off), Label = Strings.ConfigFlow.ModeSound.Off() },
+						new ActionParameterOption { Value = ModeSound.Name(ModeSoundStyle.Beep), Label = Strings.ConfigFlow.ModeSound.Beep() },
+						new ActionParameterOption { Value = ModeSound.Name(ModeSoundStyle.Announce), Label = Strings.ConfigFlow.ModeSound.Announce() },
+					],
+					label: Strings.ConfigFlow.ModeSound.Label(),
+					description: Strings.ConfigFlow.ModeSound.Description(),
+					defaultValue: ModeSound.Name(config.ModeSound),
+					required: true),
 			],
 		};
 	}
@@ -326,6 +351,9 @@ internal sealed class RouterConfigFlow(MidiRouter router) : IUiConfigFlow
 	// Fields are shown by the keyboard's position on the first page; a device name is not a safe (can be changed)).
 	private static string FieldName(int keyboard, string field) =>
 		string.Create(CultureInfo.InvariantCulture, $"shortcut-{keyboard}-{field}");
+
+	private static bool IsBuiltInSynth(string name) =>
+		name.StartsWith("Microsoft GS Wavetable", StringComparison.OrdinalIgnoreCase);
 
 	private static ActionParameter WithDefault(ActionParameter parameter, object value)
 	{

@@ -60,5 +60,12 @@ internal sealed class ModeController
 		return ModeChangeOutcome.Applied;
 	}
 
+	// The mode the router starts in: set without raising Changed, so no switch is announced.
+	public void Start(RouterMode mode)
+	{
+		Interlocked.Increment(ref _epoch);
+		Volatile.Write(ref _current, (int)mode);
+	}
+
 	public ModeChangeOutcome Toggle() => Set(Current == RouterMode.Play ? RouterMode.Control : RouterMode.Play);
 }

@@ -1,3 +1,5 @@
+using Melanchall.DryWetMidi.Common;
+using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Multimedia;
 using Serilog;
 
@@ -29,6 +31,7 @@ internal sealed class MidiRouter : IDisposable
 	private RouterStatus _status = RouterStatus.Starting;
 	private bool _enabled = true;
 	private bool _started;
+	private bool _modeStarted;
 	private bool _watching;
 	private bool _disposed;
 	private long _lastPoll;
@@ -37,11 +40,18 @@ internal sealed class MidiRouter : IDisposable
 	public MidiRouter(ILogger logger)
 	{
 		_logger = logger.ForContext<MidiRouter>();
+		if (OperatingSystem.IsWindows())
+		{
+			// TEMP: Windows debug
+			WindowsLoopback.Logger = logger.ForContext<WindowsLoopback>();
+		}
+
 		Modes = new ModeController();
 		_dispatcher = new Dispatcher(DeliverAsync, _logger);
 		_engine = new RoutingEngine(Modes, _output.Send, _dispatcher.Post);
 		_inputs = new InputDevices(_engine.Process, _engine.Release);
 		_pollTimer = new Timer(_ => Poll(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+		Modes.Changed += OnModeChanged;
 	}
 
 	public event Action? StatusChanged;
@@ -126,12 +136,32 @@ internal sealed class MidiRouter : IDisposable
 	{
 		lock (_stateLock)
 		{
+			// Only the first config sets the mode: later saves re-apply the config and must not switch it.
+			if (!_modeStarted)
+			{
+				_modeStarted = true;
+				Modes.Start(config.StartMode);
+			}
+
 			_config = config;
 			RebuildTableLocked();
 		}
 
 		Start();
 		Poll();
+	}
+
+	// Fire-and-forget: dropped when the output port is not open.
+	public void SendControlChange(int channel, int controller, int value)
+	{
+		var midiChannel = (FourBitNumber)(channel - 1);
+		_output.Send(new ControlChangeEvent((SevenBitNumber)controller, (SevenBitNumber)value) { Channel = midiChannel });
+
+		// The router does not track these, so a pedal pressed here is released at once and can't get stuck in the app.
+		if (HeldState.IsPedal(controller) && value > 0)
+		{
+			_output.Send(new ControlChangeEvent((SevenBitNumber)controller, SevenBitNumber.MinValue) { Channel = midiChannel });
+		}
 	}
 
 	public void SetEnabled(bool enabled)
@@ -189,6 +219,14 @@ internal sealed class MidiRouter : IDisposable
 		}
 	}
 
+	private void OnModeChanged()
+	{
+		if (Config.ModeSound is not ModeSoundStyle.Off and var style)
+		{
+			ModeSound.Play(style, Modes.Current, _logger);
+		}
+	}
+
 	public void Dispose()
 	{
 		lock (_pollLock)
@@ -199,6 +237,7 @@ internal sealed class MidiRouter : IDisposable
 			}
 
 			_disposed = true;
+			Modes.Changed -= OnModeChanged;
 			_pollTimer.Dispose();
 			if (_watching)
 			{
@@ -298,7 +337,7 @@ internal sealed class MidiRouter : IDisposable
 				enabled = _enabled;
 			}
 
-			var outputState = _output.Ensure(config, config.UsesVirtualOutput ? [] : GetOutputNames());
+			var outputState = _output.Ensure(config, config.UsesVirtualOutput && !OperatingSystem.IsWindows() ? [] : GetOutputNames());
 			var present = enabled && config.InputDevices.Count > 0 ? InputDevices.GetPresentNames() : [];
 			var inputs = _inputs.Refresh(config.InputDevices, enabled, present, config.OutputName);
 			status = new RouterStatus(enabled, _inputs.OpenCount, outputState, CollectProblems(config, outputState, inputs));
@@ -376,7 +415,7 @@ internal sealed class MidiRouter : IDisposable
 		{
 			if (problem.Severity == ProblemSeverity.Info && problem.Kind != ProblemKind.InputPartialMatch)
 			{
-				_logger.Information("{Problem}.", problem.Describe());
+				//_logger.Information("{Problem}.", problem.Describe());
 			}
 			else
 			{

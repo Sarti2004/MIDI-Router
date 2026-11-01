@@ -13,16 +13,17 @@ keyboard ──► MIDI Router ──► virtual / loopback port ──► App(D
 ```
 ## Setup
 
-### 1. Create a MIDI output port (Windows only)
+### 1. Create a MIDI output port (only on Windows without Windows MIDI Services)
 
 On macOS, MIDI Router creates its own virtual MIDI port automatically.
 
-On Windows, create a loopback MIDI port using either:
+On Windows with Windows MIDI Services, MIDI Router does the same: it creates a basic loopback port
+while it runs and removes it when it stops.
+
+On older Windows, create a loopback MIDI port once using either:
 
 - [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html)
 - Windows MIDI Services (loopback endpoint)
-
-This only needs to be done once.
 
 ### 2. Configure your music application (once)
 
@@ -38,7 +39,7 @@ In your music application, disable hardware MIDI keyboard.
 Open the plugin settings in Macro Deck:
 
 - **Keyboards:** Select the MIDI keyboards and controllers you want to route.
-- **Output port:** Select the virtual port (macOS) or loopback port (Windows).
+- **Output port:** Select the router's virtual port, or your loopback port on Windows without Windows MIDI Services.
 - **Mode shortcuts (optional):** Configure keyboard keys to switch between Play and Control modes. See [Modes](#modes).
 
 ## Using MIDI Router with Macro Deck
@@ -113,7 +114,7 @@ See [API documentation](API.md).
 
 - **MIDI Router must be running to forward MIDI.** If your music app receives MIDI from the router instead of the hardware keyboard, the keyboard will be silent when Macro Deck or MIDI Router is not running. Re-enable the hardware keyboard in your music application when using it without the router.
 
-- **Windows requires a loopback MIDI port.** MIDI Router cannot create its own virtual MIDI port on Windows. Create one using [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) or Windows MIDI Services.
+- **Older Windows requires a loopback MIDI port.** MIDI Router creates its own port only through Windows MIDI Services. Without it, create one using [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html).
 
 - **Some Windows MIDI devices are single-client.** When MIDI Router has a keyboard open, another application may be unable to access it directly, and vice versa. MIDI Router reports this as *in use by another app* and automatically retries the connection.
 

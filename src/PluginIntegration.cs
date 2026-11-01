@@ -61,6 +61,7 @@ internal sealed class PluginIntegration :
 		[
 			new SetModeAction(router),
 			new RoutingSwitchAction(router, SaveEnabledAsync),
+			new SendControlChangeAction(router),
 		];
 
 		_router.Modes.Changed += OnStateChanged;

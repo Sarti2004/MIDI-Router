@@ -33,6 +33,7 @@ internal sealed class RouterConfigView(MidiRouter router)
 	private readonly UiState<string?> _learning = new(null);
 
 	private readonly ConcurrentDictionary<string, UiState<string>> _text = new(StringComparer.Ordinal);
+	private readonly ConcurrentDictionary<string, UiState<bool>> _flags = new(StringComparer.Ordinal);
 	private readonly ConcurrentDictionary<string, UiState<double>> _numbers = new(StringComparer.Ordinal);
 	private readonly ConcurrentDictionary<string, UiState<IReadOnlyList<string>>> _lists = new(StringComparer.Ordinal);
 	private readonly Lock _learnLock = new();
@@ -47,6 +48,9 @@ internal sealed class RouterConfigView(MidiRouter router)
 			{
 				case ActionParameterType.MultiSelect:
 					_lists.GetOrAdd(field.Name, _ => new UiState<IReadOnlyList<string>>(ListDefault(field.DefaultValue)));
+					break;
+				case ActionParameterType.Boolean:
+					_flags.GetOrAdd(field.Name, _ => new UiState<bool>(field.DefaultValue is true or JsonElement { ValueKind: JsonValueKind.True }));
 					break;
 				case ActionParameterType.Number:
 					_numbers.GetOrAdd(field.Name, _ => new UiState<double>(Convert.ToDouble(field.DefaultValue ?? field.Min ?? 0, CultureInfo.InvariantCulture)));
@@ -176,6 +180,17 @@ internal sealed class RouterConfigView(MidiRouter router)
 				Searchable = field.Searchable,
 				Options = Options(field),
 				Binding = Bind.To(_text[field.Name]),
+				Invalid = invalid,
+				ValidationMessage = message,
+			},
+			ActionParameterType.Boolean => new UiBooleanInput
+			{
+				Key = field.Name,
+				Label = Text(field.Label),
+				HideLabel = inRow,
+				RowWeight = inRow ? 1 : UiValue.None<double>(),
+				Description = Text(field.Description),
+				Binding = Bind.To(_flags[field.Name]),
 				Invalid = invalid,
 				ValidationMessage = message,
 			},

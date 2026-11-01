@@ -115,13 +115,28 @@
   <data name="Actions.Routing.StateOff" xml:space="preserve">
     <value>Routing off</value>
   </data>
+  <data name="Actions.SendCc.Name" xml:space="preserve">
+    <value>Send MIDI CC</value>
+  </data>
+  <data name="Actions.SendCc.Description" xml:space="preserve">
+    <value>Sends CC message to the router's output port.</value>
+  </data>
+  <data name="Actions.SendCc.Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Actions.SendCc.Controller" xml:space="preserve">
+    <value>Controller (CC)</value>
+  </data>
+  <data name="Actions.SendCc.Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
   <data name="ConfigFlow.StepTitle" xml:space="preserve">
     <value>MIDI Router</value>
   </data>
-  <data name="ConfigFlow.StepDescriptionWindows" xml:space="preserve">
+  <data name="ConfigFlow.StepDescriptionLoopback" xml:space="preserve">
     <value>Select the keyboards to route and the loopback port (loopMIDI, or a Windows MIDI Services loopback). In the target app, disable the hardware keyboard and enable loopback port instead.</value>
   </data>
-  <data name="ConfigFlow.StepDescriptionMac" xml:space="preserve">
+  <data name="ConfigFlow.StepDescriptionVirtual" xml:space="preserve">
     <value>Select the keyboards to route. The router creates a virtual port. In the target app, disable hardware keyboard and enable the router's virtual port.</value>
   </data>
   <data name="ConfigFlow.InputDevices.Label" xml:space="preserve">
@@ -136,10 +151,10 @@
   <data name="ConfigFlow.OutputDevice.Label" xml:space="preserve">
     <value>Output port</value>
   </data>
-  <data name="ConfigFlow.OutputDevice.DescriptionWindows" xml:space="preserve">
-    <value>Windows cannot create a virtual port for the router: create one with loopMIDI or the Windows MIDI Services settings and select it here.</value>
+  <data name="ConfigFlow.OutputDevice.DescriptionLoopback" xml:space="preserve">
+    <value>This PC cannot create a virtual port for the router (it needs Windows MIDI Services): create one with loopMIDI or the Windows MIDI Services settings and select it here.</value>
   </data>
-  <data name="ConfigFlow.OutputDevice.DescriptionMac" xml:space="preserve">
+  <data name="ConfigFlow.OutputDevice.DescriptionVirtual" xml:space="preserve">
     <value>The router's own virtual port is recommended.</value>
   </data>
   <data name="ConfigFlow.OutputDevice.Virtual" xml:space="preserve">
@@ -150,6 +165,27 @@
   </data>
   <data name="ConfigFlow.VirtualPortName.Description" xml:space="preserve">
     <value>The name the target app shows for the plugin.</value>
+  </data>
+  <data name="ConfigFlow.StartMode.Label" xml:space="preserve">
+    <value>Start mode</value>
+  </data>
+  <data name="ConfigFlow.StartMode.Description" xml:space="preserve">
+    <value>The mode the router is in when Macro Deck starts.</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Label" xml:space="preserve">
+    <value>Sound on mode switch</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Description" xml:space="preserve">
+    <value></value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Beep" xml:space="preserve">
+    <value>Beep</value>
+  </data>
+  <data name="ConfigFlow.ModeSound.Announce" xml:space="preserve">
+    <value>Announce</value>
   </data>
   <data name="ConfigFlow.Errors.NoOutput" xml:space="preserve">
     <value>Select an output port.</value>
