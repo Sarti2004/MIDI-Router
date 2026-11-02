@@ -1,4 +1,6 @@
-# MIDI Router
+<a href="https://macro-deck.app/store/com.sarti2004.midi-router"><img alt="Open in the Macro Deck Store" src="https://assets.macro-deck.app/branding/Open%20in%20the%20Macro%20Deck%20Store%20Badge%20Dark.png" align="right" height="56"></a>
+
+# MIDI Router 
 
 A Macro Deck 3 plugin that routes input from MIDI keyboards and controllers to music apps (Dorico, DAWs, etc.), while allowing Macro Deck triggers to intercept specific MIDI messages.
 
