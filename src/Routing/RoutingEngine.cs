@@ -26,8 +26,8 @@ internal sealed class InputPort(string name)
 
 internal sealed class RoutingEngine(ModeController modes, Action<MidiEvent> forward, Action<ClaimedMessage> claim)
 {
-	private const int AllSoundOff = 120;
-	private const int AllNotesOff = 123;
+	public const int AllSoundOff = 120;
+	public const int AllNotesOff = 123;
 
 	private const int ShortcutThreshold = 64;
 

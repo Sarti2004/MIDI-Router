@@ -108,6 +108,11 @@ The **MIDI routing on/off** action releases the keyboards (closes them) so anoth
 
 This is particularly useful on Windows, where many MIDI drivers allow only one application to access a device at a time.
 
+### Basic Actions
+- Send MIDI note
+- Send MIDI CC
+- MIDI panic
+
 ## Subscription API for other plugins
 
 See [API documentation](API.md).

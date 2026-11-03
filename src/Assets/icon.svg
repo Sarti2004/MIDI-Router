@@ -8,7 +8,7 @@
    height="183.36"
    viewBox="0 0 178.88 183.36"
    sodipodi:docname="icon.svg"
-   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   inkscape:version="1.4.4 (dcaf3e7d, 2026-05-05)"
    inkscape:export-filename="icon.png"
    inkscape:export-xdpi="96"
    inkscape:export-ydpi="96"
@@ -27,15 +27,15 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.5549193"
-     inkscape:cx="-387.44372"
-     inkscape:cy="398.25611"
-     inkscape:window-width="2120"
-     inkscape:window-height="1000"
+     inkscape:zoom="1.5695488"
+     inkscape:cx="-146.22037"
+     inkscape:cy="57.978446"
+     inkscape:window-width="1920"
+     inkscape:window-height="963"
      inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:window-y="25"
      inkscape:window-maximized="0"
-     inkscape:current-layer="layer13"
+     inkscape:current-layer="layer9"
      showguides="true"
      inkscape:export-bgcolor="#26282aff" />
   <g
@@ -84,7 +84,7 @@
      inkscape:groupmode="layer"
      id="layer8"
      inkscape:label="Outer arc bottom right + stem"
-     style="display:inline">
+     style="display:none">
     <path
        style="fill:#f2f2f2;stroke:none;stroke-width:1.15817"
        d="m 86.301991,152.73198 5.155002,0.0567 c 0,4.20067 -0.171409,8.44188 0.1135,12.63445 27.445087,-0.29186 52.137217,-16.56527 63.987587,-41.19138 4.42072,-9.18658 6.44288,-18.66618 7.28718,-28.768874 0.56751,-6.7996 -0.36945,-14.559322 -1.91792,-21.194462 -0.4459,-1.908659 -0.93464,-3.809212 -1.53573,-5.676177 -0.42621,-1.323786 -0.98097,-2.640622 -1.22418,-4.015366 -0.47485,-2.689265 0.75049,-5.727138 2.04648,-8.034208 15.8611,33.128219 7.40648,73.928137 -21.39598,97.062527 -20.76315,16.67775 -42.904377,17.15966 -47.624999,17.05749 -1.353898,-0.029 -3.011235,-0.0869 -3.991045,-1.16628 -1.15006,-1.26472 -0.927692,-3.40617 -0.932324,-4.98475 -0.01042,-3.92503 -0.04517,-7.85469 0.03243,-11.77972 z"
@@ -94,7 +94,8 @@
   <g
      inkscape:groupmode="layer"
      id="layer13"
-     inkscape:label="Outer arc bottom right + stem 2">
+     inkscape:label="Outer arc bottom right + stem 2"
+     style="display:none">
     <path
        style="display:inline;fill:#f9f9f9;stroke:none;stroke-width:1.15817"
        d="m 168.42792,1.347655 c -5.00724,8.880509 -7.63997,18.208996 -9.13776,28.235654 -1.00733,6.748476 -0.57566,14.552626 0.5392,21.274232 0.32117,1.933557 0.68562,3.861807 1.16435,5.763832 0.33946,1.34864 0.80764,2.698688 0.96116,4.086311 0.29942,2.714397 -1.12039,5.666401 -2.56326,7.884553 -13.67902,-34.08721 -2.59594,-74.252856 27.64638,-95.470414 21.80115,-15.295937 -5.1874,4.420187 -18.61007,28.225832 z"
@@ -109,7 +110,7 @@
      inkscape:groupmode="layer"
      id="layer9"
      inkscape:label="Connector plug"
-     style="display:inline">
+     style="display:none">
     <path
        style="fill:#f9f9f9;stroke:none;stroke-width:1.15817"
        d="m 81.033488,141.86837 v 18.97078 a 2.8954182,2.8954182 0 0 0 2.895418,2.89542 h 10.423505 a 2.8954182,2.8954182 0 0 0 2.895418,-2.89542 v -18.97078 z"

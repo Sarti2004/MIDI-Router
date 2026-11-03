@@ -130,6 +130,75 @@
   <data name="Actions.SendCc.Value" xml:space="preserve">
     <value>Value</value>
   </data>
+  <data name="Actions.SendNote.Name" xml:space="preserve">
+    <value>Send MIDI note</value>
+  </data>
+  <data name="Actions.SendNote.Description" xml:space="preserve">
+    <value>Sends a note to the router's output port.</value>
+  </data>
+  <data name="Actions.SendNote.Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Actions.SendNote.Note.Label" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Actions.SendNote.Note.Description" xml:space="preserve">
+    <value>The note number.</value>
+  </data>
+  <data name="Actions.SendNote.Type.Label" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Actions.SendNote.Type.Description" xml:space="preserve">
+    <value>A pressed note keeps sounding until a "Release" action is received.</value>
+  </data>
+  <data name="Actions.SendNote.Type.Tap" xml:space="preserve">
+    <value>Press and release</value>
+  </data>
+  <data name="Actions.SendNote.Type.On" xml:space="preserve">
+    <value>Press (note on)</value>
+  </data>
+  <data name="Actions.SendNote.Type.Off" xml:space="preserve">
+    <value>Release (note off)</value>
+  </data>
+  <data name="Actions.SendNote.Velocity.Label" xml:space="preserve">
+    <value>Velocity</value>
+  </data>
+  <data name="Actions.SendNote.Velocity.Description" xml:space="preserve">
+    <value>How hard the note is pressed, from 1 to 127.</value>
+  </data>
+  <data name="Actions.SendNote.Duration.Label" xml:space="preserve">
+    <value>Duration (ms)</value>
+  </data>
+  <data name="Actions.SendNote.Duration.Description" xml:space="preserve">
+    <value>How long the note stays pressed before it is released.</value>
+  </data>
+  <data name="Actions.SendProgram.Name" xml:space="preserve">
+    <value>Send MIDI Program Change</value>
+  </data>
+  <data name="Actions.SendProgram.Description" xml:space="preserve">
+    <value>Sends a Program Change to the router's output port.</value>
+  </data>
+  <data name="Actions.SendProgram.Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Actions.SendProgram.Program.Label" xml:space="preserve">
+    <value>Program</value>
+  </data>
+  <data name="Actions.SendProgram.Program.Description" xml:space="preserve">
+    <value>Sent as is, from 0 to 127.</value>
+  </data>
+  <data name="Actions.Panic.Name" xml:space="preserve">
+    <value>MIDI panic (all notes off)</value>
+  </data>
+  <data name="Actions.Panic.Description" xml:space="preserve">
+    <value>Silences stuck notes in the app connected to the router's output port.</value>
+  </data>
+  <data name="Actions.Panic.Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Actions.Panic.AllChannels" xml:space="preserve">
+    <value>All channels</value>
+  </data>
   <data name="ConfigFlow.StepTitle" xml:space="preserve">
     <value>MIDI Router</value>
   </data>

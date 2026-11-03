@@ -164,6 +164,35 @@ internal sealed class MidiRouter : IDisposable
 		}
 	}
 
+	// Fire-and-forget, like SendControlChange. The router does not track these notes either.
+	public void SendNoteOn(int channel, int note, int velocity) =>
+		_output.Send(new NoteOnEvent((SevenBitNumber)note, (SevenBitNumber)velocity) { Channel = (FourBitNumber)(channel - 1) });
+
+	public void SendNoteOff(int channel, int note) =>
+		_output.Send(new NoteOffEvent((SevenBitNumber)note, SevenBitNumber.MinValue) { Channel = (FourBitNumber)(channel - 1) });
+
+	public void SendProgramChange(int channel, int program) =>
+		_output.Send(new ProgramChangeEvent((SevenBitNumber)program) { Channel = (FourBitNumber)(channel - 1) });
+
+	public void SendPanic()
+	{
+		for (var channel = 1; channel <= 16; channel++)
+		{
+			SendPanic(channel);
+		}
+	}
+
+	public void SendPanic(int channel)
+	{
+		var midiChannel = (FourBitNumber)(channel - 1);
+
+		// Pedals first: synths keep notes sounding through All Notes Off while a pedal holds them.
+		foreach (var controller in (int[])[HeldState.SustainPedal, HeldState.SostenutoPedal, RoutingEngine.AllNotesOff, RoutingEngine.AllSoundOff])
+		{
+			_output.Send(new ControlChangeEvent((SevenBitNumber)controller, SevenBitNumber.MinValue) { Channel = midiChannel });
+		}
+	}
+
 	public void SetEnabled(bool enabled)
 	{
 		lock (_stateLock)

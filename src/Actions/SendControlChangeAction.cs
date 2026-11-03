@@ -1,10 +1,9 @@
-using System.Globalization;
 using MacroDeck.Localization;
 using MacroDeck.Sdk;
 using MacroDeck.Sdk.Actions;
 using MIDIRouter.Routing;
 
-namespace MIDIRouter.Integration;
+namespace MIDIRouter.Actions;
 
 internal sealed class SendControlChangeAction(MidiRouter router) : IActionDefinition
 {
@@ -49,21 +48,14 @@ internal sealed class SendControlChangeAction(MidiRouter router) : IActionDefini
 
 	public IActionExecutor CreateExecutor() => new Executor(this);
 
-	private static int Read<T>(IReadOnlyDictionary<string, T> parameters, string name, int min, int max, int fallback) =>
-		parameters.TryGetValue(name, out var value)
-			&& double.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
-			&& double.IsFinite(number)
-				? (int)Math.Clamp(Math.Round(number), min, max)
-				: fallback;
-
 	private sealed class Executor(SendControlChangeAction action) : IActionExecutor
 	{
 		public Task<ActionResult> ExecuteAsync(ActionExecutionContext context)
 		{
 			action.Router.SendControlChange(
-				Read(context.Parameters, ChannelParameter, 1, 16, 1),
-				Read(context.Parameters, ControllerParameter, 0, 127, 7),
-				Read(context.Parameters, ValueParameter, 0, 127, 127));
+				ActionParameters.ReadNumber(context.Parameters, ChannelParameter, 1, 16, 1),
+				ActionParameters.ReadNumber(context.Parameters, ControllerParameter, 0, 127, 7),
+				ActionParameters.ReadNumber(context.Parameters, ValueParameter, 0, 127, 127));
 			return Task.FromResult(ActionResult.Success());
 		}
 	}

@@ -8,6 +8,7 @@ using MacroDeck.Sdk.ConfigFlow;
 using MacroDeck.Sdk.Events;
 using MacroDeck.Sdk.Issues;
 using MacroDeck.Sdk.Variables;
+using MIDIRouter.Actions;
 using MIDIRouter.Integration;
 using MIDIRouter.Routing;
 using Serilog;
@@ -62,6 +63,9 @@ internal sealed class PluginIntegration :
 			new SetModeAction(router),
 			new RoutingSwitchAction(router, SaveEnabledAsync),
 			new SendControlChangeAction(router),
+			new SendNoteAction(router),
+			new SendProgramChangeAction(router),
+			new PanicAction(router),
 		];
 
 		_router.Modes.Changed += OnStateChanged;

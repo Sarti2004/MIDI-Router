@@ -3,7 +3,7 @@ using MacroDeck.Sdk;
 using MacroDeck.Sdk.Actions;
 using MIDIRouter.Routing;
 
-namespace MIDIRouter.Integration;
+namespace MIDIRouter.Actions;
 
 internal sealed class RoutingSwitchAction(MidiRouter router, Func<bool, Task> saveEnabled) :
 	IActionDefinition,
