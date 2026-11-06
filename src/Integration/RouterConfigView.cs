@@ -237,7 +237,7 @@ internal sealed class RouterConfigView(MidiRouter router)
 			}
 
 			_learning.Set(target.TypeField);
-			var learn = router.Learn(target.Device, (kind, number) => Learned(target, kind, number));
+			var learn = router.Learn(target.Device, code => Learned(target, code.Kind, code.Number));
 			_learn = learn;
 			_ = Task.Delay(LearnTimeout).ContinueWith(_ => StopLearning(learn), TaskScheduler.Default);
 		}

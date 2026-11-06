@@ -63,6 +63,7 @@ Attach the MD actions you want to execute when the event occurs.
 
 **Note:** Only subscribed events are intercepted, and only in Control mode.
 
+
 ### Modes
 
 The Router has two modes:
@@ -112,6 +113,7 @@ This is particularly useful on Windows, where many MIDI drivers allow only one a
 - Send MIDI note
 - Send MIDI CC
 - MIDI panic
+- Learn MIDI code
 
 ## Subscription API for other plugins
 

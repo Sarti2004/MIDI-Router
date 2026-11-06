@@ -41,7 +41,8 @@ internal sealed class RoutingEngine(ModeController modes, Action<MidiEvent> forw
 		set => _table = value;
 	}
 
-	public IDisposable Learn(string device, Action<MidiKinds, int> learned)
+	// A null learns from any keyboard.
+	public IDisposable Learn(string? device, Action<LearnedCode> learned)
 	{
 		var request = new LearnRequest(device, learned);
 		Volatile.Write(ref _learn, request);
@@ -176,19 +177,19 @@ internal sealed class RoutingEngine(ModeController modes, Action<MidiEvent> forw
 
 	private bool TryLearn(LearnRequest learn, InputPort input, MidiEvent midiEvent)
 	{
-		if (!string.Equals(learn.Device, input.Name, StringComparison.Ordinal))
+		if (learn.Device is not null && !string.Equals(learn.Device, input.Name, StringComparison.Ordinal))
 		{
 			return false;
 		}
 
-		(MidiKinds Kind, int Number) learned;
+		LearnedCode learned;
 		switch (midiEvent)
 		{
 			case NoteOnEvent noteOn when noteOn.Velocity > 0:
-				learned = (MidiKinds.Note, noteOn.NoteNumber);
+				learned = new LearnedCode(input.Name, MidiKinds.Note, noteOn.Channel + 1, noteOn.NoteNumber);
 				break;
 			case ControlChangeEvent controlChange when controlChange.ControlValue > 0:
-				learned = (MidiKinds.ControlChange, controlChange.ControlNumber);
+				learned = new LearnedCode(input.Name, MidiKinds.ControlChange, controlChange.Channel + 1, controlChange.ControlNumber);
 				break;
 			default:
 				return false;
@@ -199,7 +200,7 @@ internal sealed class RoutingEngine(ModeController modes, Action<MidiEvent> forw
 			return false;
 		}
 
-		learn.Learned(learned.Kind, learned.Number);
+		learn.Learned(learned);
 		return true;
 	}
 
@@ -260,7 +261,7 @@ internal sealed class RoutingEngine(ModeController modes, Action<MidiEvent> forw
 		}
 	}
 
-	private sealed record LearnRequest(string Device, Action<MidiKinds, int> Learned);
+	private sealed record LearnRequest(string? Device, Action<LearnedCode> Learned);
 
 	private sealed class LearnCancellation(RoutingEngine engine, LearnRequest request) : IDisposable
 	{

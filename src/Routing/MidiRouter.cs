@@ -36,6 +36,7 @@ internal sealed class MidiRouter : IDisposable
 	private bool _disposed;
 	private long _lastPoll;
 	private volatile IClaimSink? _sink;
+	private volatile LearnedCode? _lastLearned;
 
 	public MidiRouter(ILogger logger)
 	{
@@ -49,6 +50,8 @@ internal sealed class MidiRouter : IDisposable
 	}
 
 	public event Action? StatusChanged;
+
+	public event Action? Learned;
 
 	public ModeController Modes { get; }
 
@@ -123,8 +126,19 @@ internal sealed class MidiRouter : IDisposable
 			.Order(StringComparer.OrdinalIgnoreCase),
 	];
 
-	public IDisposable Learn(string device, Action<MidiKinds, int> learned) =>
-		_engine.Learn(device, (kind, number) => ThreadPool.QueueUserWorkItem(_ => learned(kind, number)));
+	public IDisposable Learn(string? device, Action<LearnedCode> learned) =>
+		_engine.Learn(device, code => ThreadPool.QueueUserWorkItem(_ => learned(code)));
+
+	// The code the Learn action caught last, offered first when an event block is set up.
+	public LearnedCode? LastLearned
+	{
+		get => _lastLearned;
+		set
+		{
+			_lastLearned = value;
+			Learned?.Invoke();
+		}
+	}
 
 	public void Apply(RouterConfig config)
 	{

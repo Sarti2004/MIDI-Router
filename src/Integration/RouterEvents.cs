@@ -88,9 +88,10 @@ internal static class RouterEvents
 		ConfigurationParameters =
 		[
 			DeviceChoice(),
-			ActionParameter.Choice(
+
+			// Dynamic so the last learned note can go firs
+			ActionParameter.DynamicChoice(
 				NoteParameter,
-				options: NoteOptions(),
 				label: Strings.Events.Note.Label(),
 				description: Strings.Events.Note.Description()),
 		],

@@ -34,6 +34,12 @@ internal sealed class PluginIntegration :
 		("midi_router_mode", "mode", VariableType.Text, router => router.Modes.CurrentName),
 		("midi_router_enabled", "enabled", VariableType.Boolean, router => router.Status.Enabled),
 		("midi_router_status", "status", VariableType.Text, router => router.Status.Text),
+		("midi_router_learned_device", "learned-device", VariableType.Text, router => router.LastLearned?.Device),
+		("midi_router_learned_type", "learned-type", VariableType.Text, router => router.LastLearned is { } code
+			? code.Kind == MidiKinds.ControlChange ? "cc" : "note"
+			: null),
+		("midi_router_learned_number", "learned-number", VariableType.Numeric, router => router.LastLearned?.Number),
+		("midi_router_learned_channel", "learned-channel", VariableType.Numeric, router => router.LastLearned?.Channel),
 	];
 
 	private static readonly IReadOnlyCollection<string> VariableIds = [.. VariableSpecs.Select(spec => spec.Id)];
@@ -66,10 +72,12 @@ internal sealed class PluginIntegration :
 			new SendNoteAction(router),
 			new SendProgramChangeAction(router),
 			new PanicAction(router),
+			new LearnCodeAction(router, () => _context?.NotificationService),
 		];
 
 		_router.Modes.Changed += OnStateChanged;
 		_router.StatusChanged += OnStatusChanged;
+		_router.Learned += OnStateChanged;
 	}
 
 	public IReadOnlyList<IActionDefinition> Actions { get; }
@@ -151,6 +159,7 @@ internal sealed class PluginIntegration :
 	{
 		_router.Modes.Changed -= OnStateChanged;
 		_router.StatusChanged -= OnStatusChanged;
+		_router.Learned -= OnStateChanged;
 		_pluginApi.Dispose();
 		_lifetime?.Dispose();
 	}
@@ -159,22 +168,39 @@ internal sealed class PluginIntegration :
 
 	public Task<DynamicOptionsResult> GetEventOptionsAsync(EventOptionsContext context, CancellationToken cancellationToken)
 	{
+		var learned = _router.LastLearned;
 		IReadOnlyList<ActionParameterOption> options = context.ParameterName switch
 		{
-			RouterEvents.DeviceParameter =>
-			[
-				.. _router.Config.InputDevices.Select(name => new ActionParameterOption { Value = name, Label = LocalizedText.FromLiteral(name) }),
-			],
+			RouterEvents.DeviceParameter => LastLearnedFirst(
+				[.. _router.Config.InputDevices.Select(name => new ActionParameterOption { Value = name, Label = LocalizedText.FromLiteral(name) })],
+				learned?.Device),
+			RouterEvents.NoteParameter => LastLearnedFirst(
+				RouterEvents.NoteOptions(),
+				learned is { Kind: not MidiKinds.ControlChange } ? learned.Number.ToString(CultureInfo.InvariantCulture) : null),
 			_ => [],
 		};
 
 		return Task.FromResult(new DynamicOptionsResult { Options = options });
 	}
 
+	private static IReadOnlyList<ActionParameterOption> LastLearnedFirst(IReadOnlyList<ActionParameterOption> options, string? learned)
+	{
+		if (options.FirstOrDefault(option => string.Equals(option.Value, learned, StringComparison.Ordinal)) is not { } match)
+		{
+			return options;
+		}
+
+		return
+		[
+			new ActionParameterOption { Value = match.Value, Label = Strings.Events.LastLearned(match.Label), Metadata = match.Metadata },
+			.. options.Where(option => !ReferenceEquals(option, match)),
+		];
+	}
+
 	public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken = default)
 	{
 		var spec = VariableSpecs.FirstOrDefault(spec => string.Equals(spec.Id, localId, StringComparison.Ordinal));
-		return ValueTask.FromResult(spec.Read is null ? VariableReading.Unavailable : VariableReading.Of(spec.Read(_router)));
+		return ValueTask.FromResult(spec.Read?.Invoke(_router) is { } value ? VariableReading.Of(value) : VariableReading.Unavailable);
 	}
 
 	public Task<IReadOnlyList<IntegrationIssue>> GetIssuesAsync(CancellationToken cancellationToken = default)

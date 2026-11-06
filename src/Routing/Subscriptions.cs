@@ -33,4 +33,7 @@ internal enum ShortcutAction
 	Control,
 }
 
+// Channel is 1-16.
+internal sealed record LearnedCode(string Device, MidiKinds Kind, int Channel, int Number);
+
 internal sealed record ModeShortcut(string Device, MidiKinds Kind, int Number, ShortcutAction Action);

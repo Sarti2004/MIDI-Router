@@ -199,6 +199,33 @@
   <data name="Actions.Panic.AllChannels" xml:space="preserve">
     <value>All channels</value>
   </data>
+  <data name="Actions.Learn.Name" xml:space="preserve">
+    <value>Learn MIDI code</value>
+  </data>
+  <data name="Actions.Learn.Description" xml:space="preserve">
+    <value></value>
+  </data>
+  <data name="Actions.Learn.Listening.Title" xml:space="preserve">
+    <value>Listening for MIDI…</value>
+  </data>
+  <data name="Actions.Learn.Listening.Message" xml:space="preserve">
+    <value>Press a key or move a control on a keyboard.</value>
+  </data>
+  <data name="Actions.Learn.Learned" xml:space="preserve">
+    <value>Learned: {code}</value>
+  </data>
+  <data name="Actions.Learn.LearnedDetail" xml:space="preserve">
+    <value>{device} · channel {channel}.</value>
+  </data>
+  <data name="Actions.Learn.Nothing" xml:space="preserve">
+    <value>No MIDI received</value>
+  </data>
+  <data name="Actions.Learn.NoKeyboards" xml:space="preserve">
+    <value>No keyboards are open to learn from</value>
+  </data>
+  <data name="Events.LastLearned" xml:space="preserve">
+    <value>{option} (last learned)</value>
+  </data>
   <data name="ConfigFlow.StepTitle" xml:space="preserve">
     <value>MIDI Router</value>
   </data>
