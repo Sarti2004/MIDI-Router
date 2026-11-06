@@ -50,15 +50,9 @@ internal sealed unsafe partial class WindowsLoopback : IDisposable
 
 	public string PortName { get; }
 
-	// TEMP: Windows debug
-	public static Serilog.ILogger? Logger { get; set; }
-
-	private static string? _lastAvailability;
-
 	// False on Windows without MIDI Services (class not registered) or with the service unreachable.
 	public static bool IsAvailable()
 	{
-		string? error = null;
 		try
 		{
 			WithCom(() =>
@@ -68,27 +62,10 @@ internal sealed unsafe partial class WindowsLoopback : IDisposable
 			});
 			return true;
 		}
-		catch (ComException ex)
+		catch (ComException)
 		{
-			error = ex.Message;
 			return false;
 		}
-		finally
-		{
-			LogAvailability(error);
-		}
-	}
-
-	// TEMP: debug
-	private static void LogAvailability(string? error)
-	{
-		var text = error is null ? "available" : $"unavailable, {error}";
-		if (string.Equals(Interlocked.Exchange(ref _lastAvailability, text), text, StringComparison.Ordinal))
-		{
-			return;
-		}
-
-		Logger?.Information("Windows MIDI Services loopback: {Availability}", text);
 	}
 
 	// Null when MIDI Services can't make loopbacks. Throws InvalidOperationException when it can but creating this one failed.
@@ -233,9 +210,6 @@ internal sealed unsafe partial class WindowsLoopback : IDisposable
 			try
 			{
 				var (hr, text) = UpdateConfiguration(manager, payload);
-
-				// TEMP: debug
-				Logger?.Information("Windows MIDI Services loopback: {Request} -> 0x{Result:X8} {Reply}", payload, hr, text ?? "(no reply)");
 
 				// The service also fails the call when it still sends the reason back, so the reply is read either way.
 				if (string.IsNullOrEmpty(text))

@@ -40,12 +40,6 @@ internal sealed class MidiRouter : IDisposable
 	public MidiRouter(ILogger logger)
 	{
 		_logger = logger.ForContext<MidiRouter>();
-		if (OperatingSystem.IsWindows())
-		{
-			// TEMP: Windows debug
-			WindowsLoopback.Logger = logger.ForContext<WindowsLoopback>();
-		}
-
 		Modes = new ModeController();
 		_dispatcher = new Dispatcher(DeliverAsync, _logger);
 		_engine = new RoutingEngine(Modes, _output.Send, _dispatcher.Post);

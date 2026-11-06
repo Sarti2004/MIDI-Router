@@ -182,7 +182,9 @@ internal sealed class PluginIntegration :
 		IReadOnlyList<IntegrationIssue> issues =
 		[
 			.. _router.Status.Problems
-				.Where(problem => problem.Kind != ProblemKind.InputPartialMatch)
+				// Output setup problems are shown on the configuration page, not as notifications.
+				.Where(problem => problem.Kind is not (ProblemKind.InputPartialMatch
+					or ProblemKind.OutputNotConfigured or ProblemKind.VirtualOutputUnsupported or ProblemKind.OutputMissing))
 				.Select(problem => new IntegrationIssue
 				{
 					Id = problem.Id,

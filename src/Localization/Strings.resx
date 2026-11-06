@@ -322,24 +322,6 @@
   <data name="Issues.NotConfigured.Description" xml:space="preserve">
     <value>The router passes nothing through until you select at least one keyboard in its settings.</value>
   </data>
-  <data name="Issues.OutputNotConfigured.Title" xml:space="preserve">
-    <value>No output port selected</value>
-  </data>
-  <data name="Issues.OutputNotConfigured.Description" xml:space="preserve">
-    <value>Select the loopback port for the target app.</value>
-  </data>
-  <data name="Issues.VirtualOutputUnsupported.Title" xml:space="preserve">
-    <value>Virtual port not supported</value>
-  </data>
-  <data name="Issues.VirtualOutputUnsupported.Description" xml:space="preserve">
-    <value>This system cannot create a virtual MIDI port. Create a loopback port (loopMIDI or Windows MIDI Services) and select it as the output.</value>
-  </data>
-  <data name="Issues.OutputMissing.Title" xml:space="preserve">
-    <value>Output port '{port}' not found</value>
-  </data>
-  <data name="Issues.OutputMissing.Description" xml:space="preserve">
-    <value>Start the loopback app (e.g. loopMIDI) or recreate the port. The router reconnects by itself.</value>
-  </data>
   <data name="Issues.OutputFailed.Title" xml:space="preserve">
     <value>Output port '{port}' could not be opened</value>
   </data>
