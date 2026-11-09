@@ -120,7 +120,7 @@ This is particularly useful on Windows, where many MIDI drivers allow only one a
 
 A deck is a Macro Deck profile of pads and faders that send MIDI through the router. The plugin can also export it as a Cubase / Nuendo MIDI Remote script, with the same layout and bindings, so Cubase shows the deck as a controller you can map in the Mapping Assistant.
 
-Each JSON file in `Documents/MIDI Router/Decks` is one deck, and an example deck is created on first start. Saving a file updates the deck in Macro Deck right away. Decks are read-only in the Macro Deck editor: change them in the file.
+Each JSON file in the decks folder is one deck, and an example deck is created on first start. The folder is `~/Library/Application Support/MIDI Router/Decks` on macOS (in Finder: **Go → Go to Folder…**) and `Documents\MIDI Router\Decks` on Windows. Saving a file updates the deck in Macro Deck right away. Decks are read-only in the Macro Deck editor: change them in the file.
 
 ```jsonc
 {
@@ -148,6 +148,7 @@ Each JSON file in `Documents/MIDI Router/Decks` is one deck, and an example deck
 To use a deck in Cubase:
 
 1. Run the **Export decks to Cubase** action. It writes a script per deck to `Documents/Steinberg/<Cubase or Nuendo>/MIDI Remote/Driver Scripts/Local/MIDIRouter/`.
+   On macOS, Macro Deck asks for access to the Documents folder the first time.
 2. In Cubase, open the **MIDI Remote** tab and click **Reload Scripts**. The deck is detected on the router's output port.
 3. Map the controls in the Mapping Assistant. Export again after changing the deck.
 

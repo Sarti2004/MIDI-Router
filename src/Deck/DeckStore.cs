@@ -9,7 +9,7 @@ internal sealed record DeckSnapshot(IReadOnlyList<DeckLayout> Decks, IReadOnlyLi
 	public static readonly DeckSnapshot Empty = new([], []);
 }
 
-/// <summary>Deck files in Documents/MIDI Router/Decks, one virtual profile and one Cubase script each.</summary>
+/// <summary>Deck files in the decks folder, one virtual profile and one Cubase script each.</summary>
 internal sealed class DeckStore : IDisposable
 {
 	private static readonly TimeSpan ReloadDelay = TimeSpan.FromMilliseconds(300);
@@ -53,40 +53,63 @@ internal sealed class DeckStore : IDisposable
 
 	public event Action? Changed;
 
-	public static string Folder { get; } = Path.Combine(
-		Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MIDI Router", "Decks");
+	// Not Documents on macOS: it is privacy-protected there, and the first access blocks until the user answers the
+	// prompt, which the plugin's health check doesn't wait for.
+	public static string Folder { get; } = OperatingSystem.IsMacOS()
+		? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "MIDI Router", "Decks")
+		: Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MIDI Router", "Decks");
 
 	public DeckSnapshot Snapshot => _snapshot;
 
+	// Loads in the background and raises Changed when done, so a slow or blocked disk never holds up startup.
 	public void Start()
 	{
 		lock (_lock)
 		{
-			if (_watcher is not null)
+			if (_reloadTimer is not null)
 			{
 				return;
 			}
 
-			try
-			{
-				if (!Directory.Exists(Folder))
-				{
-					Directory.CreateDirectory(Folder);
-					File.WriteAllText(Path.Combine(Folder, ExampleFileName), ExampleDeck);
-				}
+			_reloadTimer = new Timer(_ => Reload(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+		}
 
-				_reloadTimer = new Timer(_ => Reload(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-				_watcher = new FileSystemWatcher(Folder, "*.json") { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite };
-				_watcher.Changed += OnFileEvent;
-				_watcher.Created += OnFileEvent;
-				_watcher.Deleted += OnFileEvent;
-				_watcher.Renamed += OnFileEvent;
-				_watcher.EnableRaisingEvents = true;
-			}
-			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		_ = Task.Run(Watch);
+	}
+
+	private void Watch()
+	{
+		FileSystemWatcher? watcher = null;
+		try
+		{
+			if (!Directory.Exists(Folder))
 			{
-				_logger.Warning(ex, "The deck folder {Folder} is unavailable.", Folder);
+				Directory.CreateDirectory(Folder);
+				File.WriteAllText(Path.Combine(Folder, ExampleFileName), ExampleDeck);
 			}
+
+			watcher = new FileSystemWatcher(Folder, "*.json") { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite };
+			watcher.Changed += OnFileEvent;
+			watcher.Created += OnFileEvent;
+			watcher.Deleted += OnFileEvent;
+			watcher.Renamed += OnFileEvent;
+			watcher.EnableRaisingEvents = true;
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			_logger.Warning(ex, "The deck folder {Folder} is unavailable.", Folder);
+		}
+
+		lock (_lock)
+		{
+			// Disposed while the folder was being opened
+			if (_reloadTimer is null)
+			{
+				watcher?.Dispose();
+				return;
+			}
+
+			_watcher = watcher;
 		}
 
 		Reload();

@@ -227,7 +227,7 @@
     <value>Export decks to Cubase</value>
   </data>
   <data name="Actions.ExportCubase.Description" xml:space="preserve">
-    <value>Writes a Cubase / Nuendo MIDI Remote script for every deck in Documents/MIDI Router/Decks.</value>
+    <value>Writes a Cubase / Nuendo MIDI Remote script for every deck file.</value>
   </data>
   <data name="Actions.ExportCubase.Exported" xml:space="preserve">
     <value>Exported {count} deck(s) to {apps}</value>
@@ -239,7 +239,7 @@
     <value>Exported {count} deck(s)</value>
   </data>
   <data name="Actions.ExportCubase.ExportedToFolderDetail" xml:space="preserve">
-    <value>No Cubase or Nuendo Driver Scripts folder was found. Copy the Local folder from {folder} into the Driver Scripts folder.</value>
+    <value>No Cubase or Nuendo Driver Scripts folder was found. Copy the Local folder from {folder} into the Driver Scripts folder. On macOS, Macro Deck also needs access to the Documents folder (System Settings → Privacy &amp; Security → Files and Folders).</value>
   </data>
   <data name="Actions.ExportCubase.Skipped" xml:space="preserve">
     <value>{count} deck file(s) have errors and were skipped</value>

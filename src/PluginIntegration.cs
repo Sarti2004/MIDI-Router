@@ -92,7 +92,8 @@ internal sealed class PluginIntegration :
 		_router.Learned += OnStateChanged;
 		_decks.Changed += OnDecksChanged;
 
-		// Before initialization: the host describes the virtual profiles and variables first.
+		// Early, as the host describes the virtual profiles and variables before initialization. Loading is in the
+		// background: the decks are announced when they arrive.
 		_decks.Start();
 	}
 
@@ -156,6 +157,7 @@ internal sealed class PluginIntegration :
 			config.OutputName.Length > 0 ? config.OutputName : "(none)",
 			_router.Modes.CurrentName);
 		_catalogNotifier.CatalogChanged("virtual-profiles", "provider", "Router initialized");
+		_ = NotifyFaderVariablesAsync(context);
 		_ = RefreshHostState(issuesChanged: true);
 	}
 
@@ -314,22 +316,22 @@ internal sealed class PluginIntegration :
 		_variables = [.. RouterVariables, .. _deckSurface.Variables()];
 		_catalogNotifier.CatalogChanged("virtual-profiles", "provider", "Decks changed");
 
-		if (_context is not { } context)
+		if (_context is { } context)
 		{
-			return;
+			_ = NotifyFaderVariablesAsync(context);
 		}
+	}
 
-		_ = Task.Run(async () =>
+	private async Task NotifyFaderVariablesAsync(IIntegrationContext context)
+	{
+		try
 		{
-			try
-			{
-				await context.Variables.NotifyDeclarationsChangedAsync().ConfigureAwait(false);
-			}
-			catch (Exception ex)
-			{
-				_logger.Debug(ex, "The fader variables failed to update.");
-			}
-		});
+			await context.Variables.NotifyDeclarationsChangedAsync().ConfigureAwait(false);
+		}
+		catch (Exception ex)
+		{
+			_logger.Debug(ex, "The fader variables failed to update.");
+		}
 	}
 
 	private void OnStatusChanged()
