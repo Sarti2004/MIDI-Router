@@ -45,22 +45,34 @@ internal sealed partial record DeckLayout(string Id, string Name, int Columns, i
 		UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
 	};
 
-	// The file name without extension, reduced to what Cubase script folders and Macro Deck variable names accept.
-	public static string IdFromFileName(string path)
+	// The file name without extension as an id, e.g. "My Deck (2).json" is "my-deck-2".
+	public static string IdFromFileName(string path) => ToId(Path.GetFileNameWithoutExtension(path), "deck");
+
+	// Macro Deck ids are lowercase and hyphen-separated, starting with a letter; Cubase script folders accept them too.
+	public static string ToId(string text, string prefix)
 	{
-		var stem = Path.GetFileNameWithoutExtension(path);
-		var id = new StringBuilder(stem.Length);
-		foreach (var c in stem)
+		var id = new StringBuilder(text.Length);
+		foreach (var c in text.Normalize(NormalizationForm.FormD))
 		{
-			var keep = char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c) : '_';
-			if (keep != '_' || (id.Length > 0 && id[^1] != '_'))
+			// "Ü" is "U" and a combining diaeresis: keep the letter
+			if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+			{
+				continue;
+			}
+
+			var keep = char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-';
+			if (keep != '-' || (id.Length > 0 && id[^1] != '-'))
 			{
 				id.Append(keep);
 			}
 		}
 
-		return id.ToString().TrimEnd('_');
+		var result = id.ToString().TrimEnd('-');
+		return result.Length > 0 && char.IsAsciiDigit(result[0]) ? $"{prefix}-{result}" : result;
 	}
+
+	// Ids join with hyphens, so two decks can produce the same one: the store keeps the first deck that claims it.
+	public string FaderVariableId(DeckControl control) => $"fader-{Id}-{control.Id}";
 
 	/// <exception cref="DeckLayoutException">The file is not valid JSON or breaks a layout rule.</exception>
 	public static DeckLayout Parse(string id, string json)
@@ -126,10 +138,10 @@ internal sealed partial record DeckLayout(string Id, string Name, int Columns, i
 	private static DeckControl ParseControl(ControlEntry entry, int index, int deckChannel)
 	{
 		var label = entry.Label?.Trim() ?? string.Empty;
-		var id = string.IsNullOrWhiteSpace(entry.Id) ? IdFromFileName(label) : IdFromFileName(entry.Id);
+		var id = ToId(string.IsNullOrWhiteSpace(entry.Id) ? label : entry.Id, "control");
 		if (id.Length == 0)
 		{
-			id = string.Create(CultureInfo.InvariantCulture, $"control_{index + 1}");
+			id = string.Create(CultureInfo.InvariantCulture, $"control-{index + 1}");
 		}
 
 		var kind = entry.Type?.Trim().ToLowerInvariant() switch

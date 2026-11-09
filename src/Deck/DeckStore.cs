@@ -140,6 +140,7 @@ internal sealed class DeckStore : IDisposable
 		var decks = new List<DeckLayout>();
 		var errors = new List<DeckFileError>();
 		var ids = new HashSet<string>(StringComparer.Ordinal);
+		var faderIds = new HashSet<string>(StringComparer.Ordinal);
 
 		string[] files;
 		try
@@ -163,7 +164,15 @@ internal sealed class DeckStore : IDisposable
 					throw new DeckLayoutException("Rename the file: its name is empty or clashes with another deck.");
 				}
 
-				decks.Add(DeckLayout.Parse(id, File.ReadAllText(path)));
+				var deck = DeckLayout.Parse(id, File.ReadAllText(path));
+				var faders = deck.Controls.Where(control => control.Kind == DeckControlKind.Fader).Select(deck.FaderVariableId).ToList();
+				if (faders.FirstOrDefault(faderIds.Contains) is { } clash)
+				{
+					throw new DeckLayoutException($"A fader of another deck already uses the variable id \"{clash}\": rename this file or the fader.");
+				}
+
+				faderIds.UnionWith(faders);
+				decks.Add(deck);
 			}
 			catch (Exception ex) when (ex is DeckLayoutException or IOException or UnauthorizedAccessException)
 			{

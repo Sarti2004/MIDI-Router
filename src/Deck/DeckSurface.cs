@@ -16,8 +16,9 @@ namespace MIDIRouter.Deck;
 /// </summary>
 internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 {
-	private const string FolderPrefix = "deck:";
-	private const string FaderPrefix = "fader:";
+	private const string ProfilePrefix = "deck-";
+	private const string FolderPrefix = "folder-";
+	private const string FaderPrefix = "fader-";
 	private const string ShortPress = "onShortPress";
 
 	private static readonly JsonSerializerOptions WidgetJson = new()
@@ -30,7 +31,7 @@ internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 	public IReadOnlyList<VirtualProfileDescriptor> GetProfiles() =>
 	[
 		.. store.Snapshot.Decks.Select(deck => new VirtualProfileDescriptor(
-			"deck-" + deck.Id,
+			ProfilePrefix + deck.Id,
 			deck.Name,
 			ProfileLayout.Grid(deck.Rows, deck.Columns),
 			[new VirtualFolderDescriptor(FolderPrefix + deck.Id, deck.Name, [.. deck.Controls.Select(control => Widget(deck, control))])])),
@@ -42,7 +43,7 @@ internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 			.Where(control => control.Kind == DeckControlKind.Fader)
 			.Select(control => VariableDefinition.Eager(VariableName(deck, control), VariableType.Numeric) with
 			{
-				Id = FaderId(deck, control),
+				Id = deck.FaderVariableId(control),
 				DisplayName = LocalizedText.FromLiteral($"{deck.Name}: {control.Label}"),
 				Write = new VariableWriteCapability(),
 			})),
@@ -125,11 +126,9 @@ internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 	private DeckControl? FindFader(string localId) =>
 		store.Snapshot.Decks
 			.SelectMany(deck => deck.Controls.Where(control => control.Kind == DeckControlKind.Fader).Select(control => (deck, control)))
-			.FirstOrDefault(pair => string.Equals(FaderId(pair.deck, pair.control), localId, StringComparison.Ordinal))
+			.FirstOrDefault(pair => string.Equals(pair.deck.FaderVariableId(pair.control), localId, StringComparison.Ordinal))
 			.control;
 
-	private static string FaderId(DeckLayout deck, DeckControl control) => $"{FaderPrefix}{deck.Id}:{control.Id}";
-
 	private static string VariableName(DeckLayout deck, DeckControl control) =>
-		VariableNames.Sanitize($"midi_router_deck_{deck.Id}_{control.Id}");
+		VariableNames.Sanitize($"midi_router_deck_{deck.Id}_{control.Id}".Replace('-', '_'));
 }
