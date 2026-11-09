@@ -256,6 +256,9 @@
   <data name="Actions.ExportCubase.Failed" xml:space="preserve">
     <value>Export failed</value>
   </data>
+  <data name="Pages.Decks" xml:space="preserve">
+    <value>Decks</value>
+  </data>
   <data name="Events.LastLearned" xml:space="preserve">
     <value>{option} (last learned)</value>
   </data>

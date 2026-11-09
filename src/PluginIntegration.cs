@@ -8,7 +8,10 @@ using MacroDeck.Sdk.ConfigFlow;
 using MacroDeck.Sdk.Events;
 using MacroDeck.Sdk.Issues;
 using MacroDeck.Sdk.Profiles;
+using MacroDeck.Sdk.Ui;
 using MacroDeck.Sdk.Variables;
+using MacroDeck.Ui.Model.Surfaces;
+using MacroDeck.Ui.Runtime;
 using MIDIRouter.Actions;
 using MIDIRouter.Deck;
 using MIDIRouter.Integration;
@@ -25,6 +28,7 @@ internal sealed class PluginIntegration :
 	IUiConfigFlowProvider,
 	IIntegrationIssueProvider,
 	IProfileProvider,
+	IUiProvider,
 	IDisposable
 {
 	private const string EnabledStorageKey = "routing-enabled";
@@ -186,6 +190,26 @@ internal sealed class PluginIntegration :
 	}
 
 	public IConfigFlow CreateConfigFlow() => new RouterConfigFlow(_router);
+
+	public IReadOnlyList<UiSurfaceDeclaration> Surfaces { get; } =
+		[new UiSurfaceDeclaration { Kind = UiSurfaceKinds.Page, SessionMode = UiSessionModes.Exclusive }];
+
+	public IReadOnlyList<UiPageDeclaration> Pages { get; } =
+		[new UiPageDeclaration { Id = DeckEditorView.PageId, Title = Strings.Pages.Decks(), IconName = "layers" }];
+
+	public Task<IUiSession?> CreateSessionAsync(UiSessionRequest request, CancellationToken cancellationToken)
+	{
+		if (!string.Equals(request.Surface.Kind, UiSurfaceKinds.Page, StringComparison.Ordinal)
+			|| !request.Surface.Attributes.TryGetValue(UiPageSurfaceAttributes.PageId, out var page)
+			|| page.ValueKind != JsonValueKind.String
+			|| !string.Equals(page.GetString(), DeckEditorView.PageId, StringComparison.Ordinal))
+		{
+			return Task.FromResult<IUiSession?>(null);
+		}
+
+		var view = new DeckEditorView(_decks, _logger);
+		return Task.FromResult<IUiSession?>(new ViewSession(new UiView(request.Surface, view.Root()), view.Dispose));
+	}
 
 	public IReadOnlyList<VirtualProfileDescriptor> GetProfiles() => _deckSurface.GetProfiles();
 

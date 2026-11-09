@@ -77,7 +77,7 @@ internal static class CubaseScript
 				: Invariant($"bindToControlChange({control.Channel - 1}, {control.Number})");
 
 			js.AppendLine();
-			js.AppendLine(Invariant($"// {Quote(control.Label)}: {Describe(control)}, channel {control.Channel}"));
+			js.AppendLine(Invariant($"// {Quote(control.Label)}: {DeckLayout.Describe(control)}, channel {control.Channel}"));
 			js.AppendLine(Invariant($"var {element} = surface.{factory}({x}, {y}, {width}, {height})"));
 			if (control.Kind == DeckControlKind.Fader)
 			{
@@ -91,10 +91,6 @@ internal static class CubaseScript
 
 		return js.ToString();
 	}
-
-	private static string Describe(DeckControl control) => control.Message == DeckMessage.Note
-		? Invariant($"note {control.Number}")
-		: Invariant($"CC {control.Number}");
 
 	// A JSON string is a valid ES5 string literal; non-ASCII comes out as \u escapes.
 	private static string Quote(string text) => JsonSerializer.Serialize(text);

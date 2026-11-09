@@ -101,6 +101,7 @@ internal sealed partial record DeckLayout(string Id, string Name, int Columns, i
 		var controls = new List<DeckControl>();
 		var ids = new HashSet<string>(StringComparer.Ordinal);
 		var occupied = new string?[columns, rows];
+		var bindings = new Dictionary<(int Channel, DeckMessage Message, int Number), string>();
 		foreach (var (entry, index) in (file.Controls ?? []).Select((entry, index) => (entry, index)))
 		{
 			var control = ParseControl(entry, index, channel);
@@ -128,6 +129,14 @@ internal sealed partial record DeckLayout(string Id, string Name, int Columns, i
 				}
 			}
 
+			// Cubase tells controls apart by what they send: two with the same binding would be one control there.
+			if (bindings.TryGetValue((control.Channel, control.Message, control.Number), out var twin))
+			{
+				throw new DeckLayoutException(string.Create(CultureInfo.InvariantCulture,
+					$"\"{control.Id}\" sends the same {Describe(control)} on channel {control.Channel} as \"{twin}\"."));
+			}
+
+			bindings[(control.Channel, control.Message, control.Number)] = control.Id;
 			controls.Add(control);
 		}
 
@@ -183,6 +192,10 @@ internal sealed partial record DeckLayout(string Id, string Name, int Columns, i
 			string.IsNullOrWhiteSpace(entry.Color) ? null : entry.Color.Trim(),
 			vertical);
 	}
+
+	public static string Describe(DeckControl control) => control.Message == DeckMessage.Note
+		? string.Create(CultureInfo.InvariantCulture, $"note {control.Number}")
+		: string.Create(CultureInfo.InvariantCulture, $"CC {control.Number}");
 
 	// System.Text.Json names .NET types and repeats the position; keep what a person editing the file needs.
 	private static string Readable(JsonException ex)
