@@ -7,6 +7,7 @@ using MacroDeck.Sdk.Actions;
 using MacroDeck.Sdk.ConfigFlow;
 using MacroDeck.Sdk.Events;
 using MacroDeck.Sdk.Issues;
+using MacroDeck.Sdk.Profiles;
 using MacroDeck.Sdk.Variables;
 using MIDIRouter.Actions;
 using MIDIRouter.Integration;
@@ -22,6 +23,7 @@ internal sealed class PluginIntegration :
 	IVariableProvider,
 	IUiConfigFlowProvider,
 	IIntegrationIssueProvider,
+	IProfileProvider,
 	IDisposable
 {
 	private const string EnabledStorageKey = "routing-enabled";
@@ -48,6 +50,7 @@ internal sealed class PluginIntegration :
 	private readonly PluginApi _pluginApi;
 	private readonly ClaimSink _sink;
 	private readonly IPluginCatalogNotifier _catalogNotifier;
+	private readonly VirtualProfileSpike _spike;
 	private readonly ILogger _logger;
 	private readonly HashSet<string> _warnedOperators = new(StringComparer.Ordinal);
 	private readonly Lock _refreshLock = new();
@@ -63,6 +66,7 @@ internal sealed class PluginIntegration :
 		_logger = logger.ForContext<PluginIntegration>();
 		_pluginApi = new PluginApi(router, logger);
 		_sink = new ClaimSink(this);
+		_spike = new VirtualProfileSpike(catalogNotifier, logger);
 
 		Actions =
 		[
@@ -87,7 +91,7 @@ internal sealed class PluginIntegration :
 	public IReadOnlyList<EventDefinition> EventDefinitions => RouterEvents.Definitions;
 
 	public IReadOnlyList<VariableDefinition> Variables { get; } =
-		[.. VariableSpecs.Select(spec => VariableDefinition.Eager(spec.Name, spec.Type, refreshInterval: VariableFallbackRefresh) with { Id = spec.Id })];
+		[.. VariableSpecs.Select(spec => VariableDefinition.Eager(spec.Name, spec.Type, refreshInterval: VariableFallbackRefresh) with { Id = spec.Id }), VirtualProfileSpike.FaderVariable];
 
 	public IReadOnlyList<VariableDefinition> DeclaredVariables => Variables;
 
@@ -139,6 +143,7 @@ internal sealed class PluginIntegration :
 			config.InputDevices.Count,
 			config.OutputName.Length > 0 ? config.OutputName : "(none)",
 			_router.Modes.CurrentName);
+		_catalogNotifier.CatalogChanged("virtual-profiles", "provider", "Router initialized");
 		_ = RefreshHostState(issuesChanged: true);
 	}
 
@@ -165,6 +170,11 @@ internal sealed class PluginIntegration :
 	}
 
 	public IConfigFlow CreateConfigFlow() => new RouterConfigFlow(_router);
+
+	public IReadOnlyList<VirtualProfileDescriptor> GetProfiles() => _spike.GetProfiles();
+
+	public Task HandleWidgetInteractionAsync(string profileId, string folderId, string widgetId, WidgetInteraction interaction) =>
+		_spike.HandleWidgetInteractionAsync(profileId, folderId, widgetId, interaction);
 
 	public Task<DynamicOptionsResult> GetEventOptionsAsync(EventOptionsContext context, CancellationToken cancellationToken)
 	{
@@ -199,9 +209,17 @@ internal sealed class PluginIntegration :
 
 	public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken = default)
 	{
+		if (VirtualProfileSpike.Owns(localId))
+		{
+			return ValueTask.FromResult(_spike.ReadFader());
+		}
+
 		var spec = VariableSpecs.FirstOrDefault(spec => string.Equals(spec.Id, localId, StringComparison.Ordinal));
 		return ValueTask.FromResult(spec.Read?.Invoke(_router) is { } value ? VariableReading.Of(value) : VariableReading.Unavailable);
 	}
+
+	public ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default) =>
+		ValueTask.FromResult(VirtualProfileSpike.Owns(localId) ? _spike.WriteFader(value) : VariableWriteResult.NotWritable());
 
 	public Task<IReadOnlyList<IntegrationIssue>> GetIssuesAsync(CancellationToken cancellationToken = default)
 	{
