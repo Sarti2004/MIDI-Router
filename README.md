@@ -114,6 +114,44 @@ This is particularly useful on Windows, where many MIDI drivers allow only one a
 - Send MIDI CC
 - MIDI panic
 - Learn MIDI code
+- Export decks to Cubase
+
+## Decks and Cubase MIDI Remote (beta)
+
+A deck is a Macro Deck profile of pads and faders that send MIDI through the router. The plugin can also export it as a Cubase / Nuendo MIDI Remote script, with the same layout and bindings, so Cubase shows the deck as a controller you can map in the Mapping Assistant.
+
+Each JSON file in `Documents/MIDI Router/Decks` is one deck, and an example deck is created on first start. Saving a file updates the deck in Macro Deck right away. Decks are read-only in the Macro Deck editor: change them in the file.
+
+```jsonc
+{
+  "name": "Example deck",
+  "columns": 5, "rows": 3,
+  "channel": 16,              // default for all controls; keep it away from your keyboard's channel
+  "controls": [
+    { "id": "pad1", "type": "pad", "label": "Pad 1", "x": 0, "y": 0, "note": 36 },
+    { "id": "pad4", "type": "pad", "label": "Pad 4", "x": 3, "y": 0, "cc": 20, "color": "#B71C1C" },
+    { "id": "fader1", "type": "fader", "label": "Fader 1", "x": 0, "y": 1, "w": 4, "cc": 21 },
+    { "id": "fader2", "type": "fader", "label": "Fader 2", "x": 4, "y": 0, "h": 3, "cc": 22 }
+  ]
+}
+```
+
+| Setting | Description |
+|---|---|
+| `type` | `pad` or `fader` |
+| `x`, `y`, `w`, `h` | Grid cell and size (`w` and `h` default to 1) |
+| `note` / `cc` | What a pad sends: a note (on, then off) or a CC (127, then 0). A fader always sends a CC (0-127) |
+| `channel` | 1-16, overrides the deck's channel |
+| `color`, `label` | Pad color and the label shown in Macro Deck and Cubase |
+| `orientation` | Fader `horizontal` or `vertical`; by default the longer side |
+
+To use a deck in Cubase:
+
+1. Run the **Export decks to Cubase** action. It writes a script per deck to `Documents/Steinberg/<Cubase or Nuendo>/MIDI Remote/Driver Scripts/Local/MIDIRouter/`.
+2. In Cubase, open the **MIDI Remote** tab and click **Reload Scripts**. The deck is detected on the router's output port.
+3. Map the controls in the Mapping Assistant. Export again after changing the deck.
+
+Pads send a short press only: a pad can't be held.
 
 ## Subscription API for other plugins
 

@@ -10,6 +10,7 @@ using MacroDeck.Sdk.Issues;
 using MacroDeck.Sdk.Profiles;
 using MacroDeck.Sdk.Variables;
 using MIDIRouter.Actions;
+using MIDIRouter.Deck;
 using MIDIRouter.Integration;
 using MIDIRouter.Routing;
 using Serilog;
@@ -46,11 +47,15 @@ internal sealed class PluginIntegration :
 
 	private static readonly IReadOnlyCollection<string> VariableIds = [.. VariableSpecs.Select(spec => spec.Id)];
 
+	private static readonly IReadOnlyList<VariableDefinition> RouterVariables =
+		[.. VariableSpecs.Select(spec => VariableDefinition.Eager(spec.Name, spec.Type, refreshInterval: VariableFallbackRefresh) with { Id = spec.Id })];
+
 	private readonly MidiRouter _router;
 	private readonly PluginApi _pluginApi;
 	private readonly ClaimSink _sink;
 	private readonly IPluginCatalogNotifier _catalogNotifier;
-	private readonly VirtualProfileSpike _spike;
+	private readonly DeckStore _decks;
+	private readonly DeckSurface _deckSurface;
 	private readonly ILogger _logger;
 	private readonly HashSet<string> _warnedOperators = new(StringComparer.Ordinal);
 	private readonly Lock _refreshLock = new();
@@ -58,6 +63,7 @@ internal sealed class PluginIntegration :
 	private volatile IIntegrationContext? _context;
 	private CancellationTokenSource? _lifetime;
 	private bool _refreshScheduled;
+	private volatile IReadOnlyList<VariableDefinition> _variables = RouterVariables;
 
 	public PluginIntegration(MidiRouter router, IPluginCatalogNotifier catalogNotifier, ILogger logger)
 	{
@@ -66,7 +72,8 @@ internal sealed class PluginIntegration :
 		_logger = logger.ForContext<PluginIntegration>();
 		_pluginApi = new PluginApi(router, logger);
 		_sink = new ClaimSink(this);
-		_spike = new VirtualProfileSpike(catalogNotifier, logger);
+		_decks = new DeckStore(logger);
+		_deckSurface = new DeckSurface(_decks, router);
 
 		Actions =
 		[
@@ -77,11 +84,16 @@ internal sealed class PluginIntegration :
 			new SendProgramChangeAction(router),
 			new PanicAction(router),
 			new LearnCodeAction(router, () => _context?.NotificationService),
+			new ExportCubaseAction(router, _decks, () => _context?.NotificationService),
 		];
 
 		_router.Modes.Changed += OnStateChanged;
 		_router.StatusChanged += OnStatusChanged;
 		_router.Learned += OnStateChanged;
+		_decks.Changed += OnDecksChanged;
+
+		// Before initialization: the host describes the virtual profiles and variables first.
+		_decks.Start();
 	}
 
 	public IReadOnlyList<IActionDefinition> Actions { get; }
@@ -90,8 +102,8 @@ internal sealed class PluginIntegration :
 
 	public IReadOnlyList<EventDefinition> EventDefinitions => RouterEvents.Definitions;
 
-	public IReadOnlyList<VariableDefinition> Variables { get; } =
-		[.. VariableSpecs.Select(spec => VariableDefinition.Eager(spec.Name, spec.Type, refreshInterval: VariableFallbackRefresh) with { Id = spec.Id }), VirtualProfileSpike.FaderVariable];
+	// The router's own variables, then one writable variable per deck fader.
+	public IReadOnlyList<VariableDefinition> Variables => _variables;
 
 	public IReadOnlyList<VariableDefinition> DeclaredVariables => Variables;
 
@@ -165,16 +177,18 @@ internal sealed class PluginIntegration :
 		_router.Modes.Changed -= OnStateChanged;
 		_router.StatusChanged -= OnStatusChanged;
 		_router.Learned -= OnStateChanged;
+		_decks.Changed -= OnDecksChanged;
+		_decks.Dispose();
 		_pluginApi.Dispose();
 		_lifetime?.Dispose();
 	}
 
 	public IConfigFlow CreateConfigFlow() => new RouterConfigFlow(_router);
 
-	public IReadOnlyList<VirtualProfileDescriptor> GetProfiles() => _spike.GetProfiles();
+	public IReadOnlyList<VirtualProfileDescriptor> GetProfiles() => _deckSurface.GetProfiles();
 
 	public Task HandleWidgetInteractionAsync(string profileId, string folderId, string widgetId, WidgetInteraction interaction) =>
-		_spike.HandleWidgetInteractionAsync(profileId, folderId, widgetId, interaction);
+		_deckSurface.PressAsync(folderId, widgetId, interaction);
 
 	public Task<DynamicOptionsResult> GetEventOptionsAsync(EventOptionsContext context, CancellationToken cancellationToken)
 	{
@@ -209,9 +223,9 @@ internal sealed class PluginIntegration :
 
 	public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken = default)
 	{
-		if (VirtualProfileSpike.Owns(localId))
+		if (DeckSurface.OwnsVariable(localId))
 		{
-			return ValueTask.FromResult(_spike.ReadFader());
+			return ValueTask.FromResult(_deckSurface.Read(localId));
 		}
 
 		var spec = VariableSpecs.FirstOrDefault(spec => string.Equals(spec.Id, localId, StringComparison.Ordinal));
@@ -219,7 +233,7 @@ internal sealed class PluginIntegration :
 	}
 
 	public ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default) =>
-		ValueTask.FromResult(VirtualProfileSpike.Owns(localId) ? _spike.WriteFader(value) : VariableWriteResult.NotWritable());
+		ValueTask.FromResult(DeckSurface.OwnsVariable(localId) ? _deckSurface.Write(localId, value) : VariableWriteResult.NotWritable());
 
 	public Task<IReadOnlyList<IntegrationIssue>> GetIssuesAsync(CancellationToken cancellationToken = default)
 	{
@@ -294,6 +308,29 @@ internal sealed class PluginIntegration :
 	}
 
 	private void OnStateChanged() => ScheduleRefresh();
+
+	private void OnDecksChanged()
+	{
+		_variables = [.. RouterVariables, .. _deckSurface.Variables()];
+		_catalogNotifier.CatalogChanged("virtual-profiles", "provider", "Decks changed");
+
+		if (_context is not { } context)
+		{
+			return;
+		}
+
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				await context.Variables.NotifyDeclarationsChangedAsync().ConfigureAwait(false);
+			}
+			catch (Exception ex)
+			{
+				_logger.Debug(ex, "The fader variables failed to update.");
+			}
+		});
+	}
 
 	private void OnStatusChanged()
 	{
