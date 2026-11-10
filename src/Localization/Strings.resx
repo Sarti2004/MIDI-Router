@@ -349,6 +349,9 @@
   <data name="Actions.ExportCubase.ExportedToFolderDetail" xml:space="preserve">
     <value>Copy the Local folder from {folder} into the Driver Scripts folder. On macOS, Macro Deck also needs access to the Documents folder (System Settings → Privacy &amp; Security → Files and Folders).</value>
   </data>
+  <data name="Editor.Status.Full" xml:space="preserve">
+    <value>The device is full: Macro Deck can't draw more than this. Remove an element or use small buttons, which take the least.</value>
+  </data>
   <data name="Events.LastLearned" xml:space="preserve">
     <value>{option} (last learned)</value>
   </data>

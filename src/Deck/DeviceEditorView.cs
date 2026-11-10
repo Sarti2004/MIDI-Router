@@ -26,6 +26,9 @@ internal sealed class DeviceEditorView : IDisposable
 	private const int FirstNote = 36;
 	private const int FirstController = 20;
 
+	// A change to the device redraws the preview in one patch, which Macro Deck takes up to 64 KB.
+	private const int MaxPreviewBytes = 56 * 1024;
+
 	private readonly DeviceStore _store;
 	private readonly DeviceActions _actions;
 	private readonly MidiRouter _router;
@@ -446,6 +449,17 @@ internal sealed class DeviceEditorView : IDisposable
 			return false;
 		}
 
+		return Store(changed);
+	}
+
+	private bool Store(VirtualDevice changed)
+	{
+		if (MixerView.Size(_actions, _mixer.Art, changed) > MaxPreviewBytes)
+		{
+			Status(Strings.Editor.Status.Full(), "warning");
+			return false;
+		}
+
 		_store.Update(_ => changed);
 		return true;
 	}
@@ -460,7 +474,7 @@ internal sealed class DeviceEditorView : IDisposable
 			return;
 		}
 
-		_store.Update(_ => changed);
+		Store(changed);
 	}
 
 	private void DeleteSelected()

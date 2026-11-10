@@ -63,7 +63,7 @@ internal readonly record struct MidiBinding(MidiMessageKind Kind, int Channel, i
 /// <summary>The one virtual device: a grid of elements, shown by the mixer folder view and exported to Cubase.</summary>
 internal sealed record VirtualDevice(string Name, int Columns, int Rows, IReadOnlyList<DeviceElement> Elements)
 {
-	public const int MaxGridSize = 12;
+	public const int MaxGridSize = 8;
 
 	// Cubase script folders and Macro Deck variable names take it as is.
 	public const string Id = "virtual-device";

@@ -8,7 +8,7 @@ using MacroDeck.Ui.Runtime;
 namespace MIDIRouter.Deck;
 
 /// <summary>The mixer's images, registered with Macro Deck at startup; without them it draws plain shapes.</summary>
-internal sealed record MixerArt(UiResource Panel, UiResource CapVertical, UiResource CapHorizontal)
+internal sealed record MixerArt(UiResource Panel, UiResource CapVertical, UiResource CapHorizontal, UiResource TrackVertical, UiResource TrackHorizontal)
 {
 	public static string Folder { get; } = Path.Combine(AppContext.BaseDirectory, "Assets", "Mixer");
 }
@@ -45,7 +45,9 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 
 /// <summary>
 /// Draws the virtual device as a mixer: brushed metal with satin key caps and fader channels, each a slot with a scale
-/// and a fader cap. Cells are square; the drawing keeps the grid's aspect inside whatever it is given.
+/// and a fader cap. Cells are square; the drawing keeps the grid's aspect inside whatever it is given. The tree is kept
+/// flat and small: Macro Deck sends at most 32 levels and 192 KB, and a change to the device redraws the mixer in one
+/// patch of at most 64 KB.
 /// </summary>
 internal static class MixerView
 {
@@ -57,8 +59,7 @@ internal static class MixerView
 	private const string MutedLegend = "#A4A7AE";
 	private const string Transparent = "#00000000";
 	private const string Channel = "#121315D9";
-	private const string Slot = "#050506";
-	private const string Tick = "#7A7E86";
+	private const string SlotColor = "#050506";
 	private const string DefaultAccent = "#5B8DEF";
 
 	private const double CellGap = 0.018;
@@ -68,8 +69,6 @@ internal static class MixerView
 	private const double SmallLabelSize = 0.026;
 	private const double LedHeight = 0.012;
 	private const double SlotWidth = 0.012;
-	private const double TickWidth = 0.0025;
-	private const int Ticks = 11;
 
 	// The cap's share of the slot: a fader two cells long has a cap about a fifth of it.
 	private const double CapLength = 0.36;
@@ -95,7 +94,7 @@ internal static class MixerView
 	public static UiElement Folder(MixerModel model) =>
 		new UiLayer
 		{
-			Key = "mixer",
+			Key = "m",
 			Fill = true,
 			Children =
 			[
@@ -142,12 +141,7 @@ internal static class MixerView
 					Children =
 					[
 						Background(model, "bg"),
-						new UiStack
-						{
-							Key = "pd",
-							Padding = UiSize.FromBasis(PanelPadding),
-							Children = [Grid(model, device)],
-						},
+						Grid(model, device),
 					],
 				},
 			};
@@ -204,6 +198,7 @@ internal static class MixerView
 			Columns = device.Columns,
 			Rows = device.Rows,
 			Gap = UiSize.FromBasis(CellGap),
+			Padding = UiSize.FromBasis(PanelPadding),
 			Children = cells,
 		};
 	}
@@ -272,10 +267,10 @@ internal static class MixerView
 			Fill = true,
 			Children =
 			[
-				Scale(element, vertical),
-				SlotWithLevel(element, vertical, level),
+				Track(model, element, vertical),
+				Slot(vertical, "lv", element.Color ?? DefaultAccent, () => level.Value),
 				Cap(model, element, vertical, level),
-				Input(model, element, vertical, level),
+				model.Editing ? Select(model, element) : Input(model, element, vertical, level),
 			],
 		};
 
@@ -303,17 +298,6 @@ internal static class MixerView
 				: [Label(element.Label, SmallLabelSize, Legend), fader, readout],
 		};
 
-		// In the editor the whole channel is one press target that selects it.
-		UiElement content = model.Editing
-			? new UiButton
-			{
-				Key = "sel",
-				Background = Transparent,
-				Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(element.X, element.Y, 0))],
-				Children = [channel with { Fill = true }],
-			}
-			: channel;
-
 		return new UiModifier
 		{
 			Key = element.Id,
@@ -324,79 +308,47 @@ internal static class MixerView
 			BorderColor = UiValue.From(() => model.Selected.Value == element.Id ? SelectedRim : Rim),
 			Clip = UiComponentClips.Bounds,
 			AccessibilityLabel = UiText.Of(element.Label),
-			Child = content,
+			Child = channel,
 		};
 	}
 
-	// Tick marks along the fader, a longer one at the ends and the middle.
-	private static UiStack Scale(DeviceElement element, bool vertical) => new()
+	// In the editor a press anywhere on the fader selects the element.
+	private static UiButton Select(MixerModel model, DeviceElement element) => new()
 	{
-		Key = "sc",
+		Key = "sel",
+		Fill = true,
+		Background = Transparent,
+		Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(element.X, element.Y, 0))],
+	};
+
+	// The slot and its scale: one image, as a fader drawn from shapes takes a large share of what a UI tree may hold.
+	private static UiElement Track(MixerModel model, DeviceElement element, bool vertical) =>
+		model.Art is { } art
+			? new UiButton { Key = "tr", Fill = true, Background = Transparent, Source = vertical ? art.TrackVertical : art.TrackHorizontal, Fit = UiComponentImageFits.Contain }
+			: Slot(vertical, "tr", SlotColor, () => 1);
+
+	// The slot down the middle, and over it the same slot lit in the element's color up to the level: two flat layers
+	// rather than one nested inside the other, as a UI tree may only be so deep.
+	private static UiStack Slot(bool vertical, string key, string color, Func<double> fraction) => new()
+	{
+		Key = key,
 		Fill = true,
 		Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-		Justify = UiComponentJustify.SpaceBetween,
+		Justify = vertical ? UiComponentJustify.End : UiComponentJustify.Start,
 		Align = UiComponentAlignments.Center,
 		Padding = UiSize.FromBasis(0.01),
 		Children =
 		[
-			.. Enumerable.Range(0, Ticks).Select(index =>
+			new UiModifier
 			{
-				var across = UiLength.OfParent(index % 5 == 0 ? 0.8 : 0.5);
-				var along = UiLength.OfBasis(TickWidth);
-				return new UiModifier
-				{
-					Key = string.Create(CultureInfo.InvariantCulture, $"t{index}"),
-					Frame = vertical ? new UiFrame { Width = across, Height = along } : new UiFrame { Width = along, Height = across },
-					Child = new UiShape { Key = string.Create(CultureInfo.InvariantCulture, $"t{index}s"), Shape = UiComponentShapes.Rectangle, Color = Tick },
-				};
-			}),
+				Key = key + "f",
+				Frame = UiValue.From(() => vertical
+					? new UiFrame { Width = UiLength.OfBasis(SlotWidth), Height = UiLength.OfParent(fraction()) }
+					: new UiFrame { Width = UiLength.OfParent(fraction()), Height = UiLength.OfBasis(SlotWidth) }),
+				Child = new UiShape { Key = key + "s", Shape = UiComponentShapes.Capsule, Color = color },
+			},
 		],
 	};
-
-	// The slot down the middle, lit in the element's color up to the level.
-	private static UiStack SlotWithLevel(DeviceElement element, bool vertical, UiState<double> level)
-	{
-		var accent = element.Color ?? DefaultAccent;
-		return new UiStack
-		{
-			Key = "sl",
-			Fill = true,
-			Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-			Justify = UiComponentJustify.Center,
-			Align = UiComponentAlignments.Center,
-			Children =
-			[
-				new UiModifier
-				{
-					Key = "sf",
-					Frame = vertical
-						? new UiFrame { Width = UiLength.OfBasis(SlotWidth), Height = UiLength.OfParent(0.94) }
-						: new UiFrame { Width = UiLength.OfParent(0.94), Height = UiLength.OfBasis(SlotWidth) },
-					Radius = UiSize.FromBasis(SlotWidth / 2),
-					Clip = UiComponentClips.Bounds,
-					Child = new UiStack
-					{
-						Key = "sb",
-						Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-						Justify = vertical ? UiComponentJustify.End : UiComponentJustify.Start,
-						Background = Slot,
-						Children =
-						[
-							new UiModifier
-							{
-								Key = "lv",
-								Frame = UiValue.From(() => vertical
-									? new UiFrame { Width = UiLength.OfParent(1), Height = UiLength.OfParent(level.Value) }
-									: new UiFrame { Width = UiLength.OfParent(level.Value), Height = UiLength.OfParent(1) }),
-								Opacity = 0.85,
-								Child = new UiShape { Key = "lvs", Shape = UiComponentShapes.Rectangle, Color = accent },
-							},
-						],
-					},
-				},
-			],
-		};
-	}
 
 	// The cap sits at the level: a spacer before it takes the rest of the travel.
 	private static UiStack Cap(MixerModel model, DeviceElement element, bool vertical, UiState<double> level)
@@ -470,26 +422,30 @@ internal static class MixerView
 		}
 	}
 
-	// An empty cell or half: nothing in the live mixer, a faint place target in the editor.
+	// An empty cell or half: nothing in the live mixer, a faint place target in the editor. One node each, as an
+	// empty grid has many.
 	private static UiElement Empty(MixerModel model, int x, int y, int slot, string key) =>
 		model.Editing
-			? new UiModifier
+			? new UiButton
 			{
 				Key = key,
-				Radius = UiSize.FromBasis(KeyRadius),
-				BorderWidth = UiSize.FromBasis(0.002),
+				Background = "#00000040",
+				BorderStyle = UiComponentBorderStyles.Static,
 				BorderColor = "#5A5D6466",
-				Child = new UiButton
-				{
-					Key = key + "-place",
-					Justify = UiComponentJustify.Center,
-					Align = UiComponentAlignments.Center,
-					Background = "#00000040",
-					Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(x, y, slot))],
-					Children = [new UiIcon { Key = key + "-plus", Icon = UiIcons.Plus, Size = UiSize.FromBasis(0.03), Color = "#8A8D95" }],
-				},
+				Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(x, y, slot))],
 			}
 			: new UiStack { Key = key };
+
+	/// <summary>The size of the editor's drawing of <paramref name="device"/>, in bytes as Macro Deck receives it.</summary>
+	public static int Size(DeviceActions actions, MixerArt? art, VirtualDevice device)
+	{
+		var model = new MixerModel(actions, art) { CellPressed = (_, _, _) => { } };
+		model.Device.Set(device);
+		using var view = new UiView(
+			new MacroDeck.Ui.Model.Surfaces.UiSurface { Kind = MacroDeck.Ui.Model.Surfaces.UiSurfaceKinds.Page, SessionMode = MacroDeck.Ui.Model.Surfaces.UiSessionModes.Exclusive },
+			new UiFragment { Key = "size", Children = [Preview(model)] });
+		return MacroDeck.Ui.Model.Serialization.UiCanonicalJson.SerializeToUtf8Bytes(view.Tree).Length;
+	}
 
 	// Background and radius style the button itself, so the modifier emits no node: the grid spans go on the button.
 	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height) => new()

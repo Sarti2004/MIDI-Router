@@ -389,7 +389,9 @@ internal sealed class PluginIntegration :
 			return new MixerArt(
 				await Register("brushed-metal.jpg", "image/jpeg").ConfigureAwait(false),
 				await Register("fader-cap-vertical.png", "image/png").ConfigureAwait(false),
-				await Register("fader-cap-horizontal.png", "image/png").ConfigureAwait(false));
+				await Register("fader-cap-horizontal.png", "image/png").ConfigureAwait(false),
+				await Register("fader-track-vertical.png", "image/png").ConfigureAwait(false),
+				await Register("fader-track-horizontal.png", "image/png").ConfigureAwait(false));
 		}
 		catch (Exception ex) when (ex is UiResourceException or IOException or UnauthorizedAccessException)
 		{
