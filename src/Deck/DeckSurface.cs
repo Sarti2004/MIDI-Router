@@ -10,9 +10,10 @@ using MIDIRouter.Routing;
 namespace MIDIRouter.Deck;
 
 /// <summary>
-/// Shows each deck as a read-only virtual profile. Pads are ActionButtons, which report only a short press, so a
-/// pad sends a press and its release at once. Faders are Sliders bound to a writable variable of their own: Macro Deck
-/// writes the slider value to it, and the write sends the CC.
+/// Shows each deck as a read-only virtual profile. Buttons are ActionButtons, which report only a short press, so a
+/// button sends a press and its release at once. Sliders are Sliders bound to a writable variable of their own: Macro
+/// Deck writes the slider value to it, and the write sends the CC. A profile has no half cells, so a small button takes
+/// its whole cell, and the bottom one of a pair is left out.
 /// </summary>
 internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 {
@@ -34,13 +35,13 @@ internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 			ProfilePrefix + deck.Id,
 			deck.Name,
 			ProfileLayout.Grid(deck.Rows, deck.Columns),
-			[new VirtualFolderDescriptor(FolderPrefix + deck.Id, deck.Name, [.. deck.Controls.Select(control => Widget(deck, control))])])),
+			[new VirtualFolderDescriptor(FolderPrefix + deck.Id, deck.Name, [.. deck.Controls.Where(Shown).Select(control => Widget(deck, control))])])),
 	];
 
 	public IReadOnlyList<VariableDefinition> Variables() =>
 	[
 		.. store.Snapshot.Decks.SelectMany(deck => deck.Controls
-			.Where(control => control.Kind == DeckControlKind.Fader)
+			.Where(control => control.IsSlider)
 			.Select(control => VariableDefinition.Eager(VariableName(deck, control), VariableType.Numeric) with
 			{
 				Id = deck.FaderVariableId(control),
@@ -56,17 +57,21 @@ internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 	{
 		if (string.Equals(interaction.TriggerType, ShortPress, StringComparison.Ordinal)
 			&& FindDeck(folderId) is { } deck
-			&& deck.Controls.FirstOrDefault(control => string.Equals(control.Id, widgetId, StringComparison.Ordinal)) is { Kind: DeckControlKind.Pad } pad)
+			&& deck.Controls.FirstOrDefault(control => string.Equals(control.Id, widgetId, StringComparison.Ordinal)) is { IsSlider: false } button)
 		{
-			if (pad.Message == DeckMessage.Note)
+			switch (button.Message)
 			{
-				router.SendNoteOn(pad.Channel, pad.Number, 127);
-				router.SendNoteOff(pad.Channel, pad.Number);
-			}
-			else
-			{
-				router.SendControlChange(pad.Channel, pad.Number, 127);
-				router.SendControlChange(pad.Channel, pad.Number, 0);
+				case DeckMessage.Note:
+					router.SendNoteOn(button.Channel, button.Number, 127);
+					router.SendNoteOff(button.Channel, button.Number);
+					break;
+				case DeckMessage.ControlChange:
+					router.SendControlChange(button.Channel, button.Number, 127);
+					router.SendControlChange(button.Channel, button.Number, 0);
+					break;
+				default:
+					router.SendProgramChange(button.Channel, button.Number);
+					break;
 			}
 		}
 
@@ -102,13 +107,15 @@ internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 		return VariableWriteResult.Applied();
 	}
 
-	private static VirtualWidgetDescriptor Widget(DeckLayout deck, DeckControl control) => control.Kind == DeckControlKind.Pad
+	private static bool Shown(DeckControl control) => control is not { Kind: DeckControlKind.SmallButton, Slot: 1 };
+
+	private static VirtualWidgetDescriptor Widget(DeckLayout deck, DeckControl control) => !control.IsSlider
 		? new(control.Id, "ActionButton", control.X, control.Y, control.Width, control.Height,
 			JsonSerializer.Serialize(new { label = control.Label, backgroundColor = control.Color }, WidgetJson))
 		: new(control.Id, "Slider", control.X, control.Y, control.Width, control.Height,
 			JsonSerializer.Serialize(new
 			{
-				orientation = control.Vertical ? "vertical" : "horizontal",
+				orientation = control.Kind == DeckControlKind.VerticalSlider ? "vertical" : "horizontal",
 				label = control.Label,
 				color = control.Color,
 				valueVariable = VariableName(deck, control),
@@ -125,7 +132,7 @@ internal sealed class DeckSurface(DeckStore store, MidiRouter router)
 
 	private DeckControl? FindFader(string localId) =>
 		store.Snapshot.Decks
-			.SelectMany(deck => deck.Controls.Where(control => control.Kind == DeckControlKind.Fader).Select(control => (deck, control)))
+			.SelectMany(deck => deck.Controls.Where(control => control.IsSlider).Select(control => (deck, control)))
 			.FirstOrDefault(pair => string.Equals(pair.deck.FaderVariableId(pair.control), localId, StringComparison.Ordinal))
 			.control;
 

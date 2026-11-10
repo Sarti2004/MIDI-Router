@@ -15,6 +15,7 @@ internal static class CubaseScript
 	// One deck cell is a 2 x 2 block of surface units: the control, and a label strip under it.
 	private const double Cell = 2;
 	private const double LabelHeight = 0.6;
+	private const double SmallLabelHeight = 0.4;
 
 	// Driver Scripts folders of the Steinberg apps that have run at least once, e.g. Documents/Steinberg/Cubase.
 	public static IReadOnlyList<string> DriverScriptFolders()
@@ -61,32 +62,41 @@ internal static class CubaseScript
 
 		foreach (var (control, index) in deck.Controls.Select((control, index) => (control, index)))
 		{
+			js.AppendLine();
+			js.AppendLine(Invariant($"// {Quote(control.Label)}: {DeckLayout.Describe(control)}, channel {control.Channel}"));
+
+			// The API has no program change binding.
+			if (control.Message == DeckMessage.ProgramChange)
+			{
+				js.AppendLine("// not exported: MIDI Remote can't bind a program change");
+				continue;
+			}
+
 			var element = Invariant($"control{index + 1}");
-			var x = control.X * Cell;
-			var y = control.Y * Cell;
-			var width = control.Width * Cell;
-			var height = (control.Height * Cell) - LabelHeight;
+
+			// A small button is the top or bottom half of its cell, with a narrower label strip.
+			var (x, y, width, height, labelHeight) = control.Kind == DeckControlKind.SmallButton
+				? (control.X * Cell, (control.Y * Cell) + (control.Slot * Cell / 2), Cell, (Cell / 2) - SmallLabelHeight, SmallLabelHeight)
+				: (control.X * Cell, control.Y * Cell, control.Width * Cell, (control.Height * Cell) - LabelHeight, LabelHeight);
 			var factory = control switch
 			{
-				{ Kind: DeckControlKind.Fader } => "makeFader",
-				{ Message: DeckMessage.Note } => "makeTriggerPad",
+				{ IsSlider: true } => "makeFader",
+				{ Kind: DeckControlKind.Button, Message: DeckMessage.Note } => "makeTriggerPad",
 				_ => "makeButton",
 			};
 			var binding = control.Message == DeckMessage.Note
 				? Invariant($"bindToNote({control.Channel - 1}, {control.Number})")
 				: Invariant($"bindToControlChange({control.Channel - 1}, {control.Number})");
 
-			js.AppendLine();
-			js.AppendLine(Invariant($"// {Quote(control.Label)}: {DeckLayout.Describe(control)}, channel {control.Channel}"));
 			js.AppendLine(Invariant($"var {element} = surface.{factory}({x}, {y}, {width}, {height})"));
-			if (control.Kind == DeckControlKind.Fader)
+			if (control.IsSlider)
 			{
-				js.AppendLine(Invariant($"{element}.{(control.Vertical ? "setTypeVertical" : "setTypeHorizontal")}()"));
+				js.AppendLine(Invariant($"{element}.{(control.Kind == DeckControlKind.VerticalSlider ? "setTypeVertical" : "setTypeHorizontal")}()"));
 			}
 
 			js.AppendLine(Invariant($"{element}.mSurfaceValue.mMidiBinding.setInputPort(midiInput).{binding}"));
 			js.AppendLine(Invariant(
-				$"page.setLabelFieldText(surface.makeLabelField({x}, {y + height}, {width}, {LabelHeight}).relateTo({element}), {Quote(control.Label)})"));
+				$"page.setLabelFieldText(surface.makeLabelField({x}, {y + height}, {width}, {labelHeight}).relateTo({element}), {Quote(control.Label)})"));
 		}
 
 		return js.ToString();

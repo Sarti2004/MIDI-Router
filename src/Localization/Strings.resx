@@ -259,6 +259,159 @@
   <data name="Pages.Decks" xml:space="preserve">
     <value>Decks</value>
   </data>
+  <data name="Editor.Title" xml:space="preserve">
+    <value>Decks</value>
+  </data>
+  <data name="Editor.Deck" xml:space="preserve">
+    <value>Deck</value>
+  </data>
+  <data name="Editor.NoDecks" xml:space="preserve">
+    <value>No decks yet. Create one with New deck.</value>
+  </data>
+  <data name="Editor.NewDeck" xml:space="preserve">
+    <value>New deck</value>
+  </data>
+  <data name="Editor.NewDeckPrompt" xml:space="preserve">
+    <value>Name of the new deck</value>
+  </data>
+  <data name="Editor.DeleteDeck" xml:space="preserve">
+    <value>Delete deck</value>
+  </data>
+  <data name="Editor.DeleteDeckConfirm" xml:space="preserve">
+    <value>Delete {deck} and its file?</value>
+  </data>
+  <data name="Editor.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Editor.Columns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="Editor.Rows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="Editor.Channel" xml:space="preserve">
+    <value>Default channel</value>
+  </data>
+  <data name="Editor.Place" xml:space="preserve">
+    <value>Element to place</value>
+  </data>
+  <data name="Editor.Mode" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="Editor.Modes.Place" xml:space="preserve">
+    <value>Place and select</value>
+  </data>
+  <data name="Editor.Modes.Move" xml:space="preserve">
+    <value>Move</value>
+  </data>
+  <data name="Editor.Kinds.Button" xml:space="preserve">
+    <value>Button</value>
+  </data>
+  <data name="Editor.Kinds.SmallButton" xml:space="preserve">
+    <value>Small button</value>
+  </data>
+  <data name="Editor.Kinds.VerticalSlider" xml:space="preserve">
+    <value>Vertical slider</value>
+  </data>
+  <data name="Editor.Kinds.HorizontalSlider" xml:space="preserve">
+    <value>Horizontal slider</value>
+  </data>
+  <data name="Editor.EmptyCell" xml:space="preserve">
+    <value>Empty cell</value>
+  </data>
+  <data name="Editor.Selected" xml:space="preserve">
+    <value>{label} at {position}</value>
+  </data>
+  <data name="Editor.Label" xml:space="preserve">
+    <value>Label</value>
+  </data>
+  <data name="Editor.Color" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="Editor.Width" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="Editor.Height" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="Editor.Slot" xml:space="preserve">
+    <value>Half</value>
+  </data>
+  <data name="Editor.Slots.Top" xml:space="preserve">
+    <value>Top</value>
+  </data>
+  <data name="Editor.Slots.Bottom" xml:space="preserve">
+    <value>Bottom</value>
+  </data>
+  <data name="Editor.Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="Editor.ElementChannel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Editor.Numbers.Note" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="Editor.Numbers.Controller" xml:space="preserve">
+    <value>Controller (CC)</value>
+  </data>
+  <data name="Editor.Numbers.Program" xml:space="preserve">
+    <value>Program</value>
+  </data>
+  <data name="Editor.DeleteElement" xml:space="preserve">
+    <value>Delete element</value>
+  </data>
+  <data name="Editor.Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Editor.Revert" xml:space="preserve">
+    <value>Revert</value>
+  </data>
+  <data name="Editor.Export" xml:space="preserve">
+    <value>Export to Cubase</value>
+  </data>
+  <data name="Editor.Status.Hint" xml:space="preserve">
+    <value>Press an empty cell to place the element, or an element to select it.</value>
+  </data>
+  <data name="Editor.Status.MoveHint" xml:space="preserve">
+    <value>Press the element to move, then the cell to move it to.</value>
+  </data>
+  <data name="Editor.Status.MoveTarget" xml:space="preserve">
+    <value>Now press the cell to move {label} to.</value>
+  </data>
+  <data name="Editor.Status.Moved" xml:space="preserve">
+    <value>Moved {label} to {position}.</value>
+  </data>
+  <data name="Editor.Status.UnsupportedAction" xml:space="preserve">
+    <value>Only Send MIDI note, Send MIDI CC and Send program change can be attached.</value>
+  </data>
+  <data name="Editor.Status.SliderNeedsCc" xml:space="preserve">
+    <value>A slider sends a CC: choose Send MIDI CC.</value>
+  </data>
+  <data name="Editor.Status.Saved" xml:space="preserve">
+    <value>Saved {deck}.</value>
+  </data>
+  <data name="Editor.Status.SaveFailed" xml:space="preserve">
+    <value>Not saved: {error}</value>
+  </data>
+  <data name="Editor.Status.SaveFirst" xml:space="preserve">
+    <value>Save or revert the changes first.</value>
+  </data>
+  <data name="Editor.Status.ChangedOnDisk" xml:space="preserve">
+    <value>The deck file changed on disk. Save overwrites it, Revert loads it.</value>
+  </data>
+  <data name="Editor.Status.Exported" xml:space="preserve">
+    <value>Exported {count} deck(s) to {apps}. In Cubase's MIDI Remote tab, click Reload Scripts.</value>
+  </data>
+  <data name="Editor.Status.ExportedToFolder" xml:space="preserve">
+    <value>Exported {count} deck(s) to {folder}. Copy its Local folder into Cubase's Driver Scripts folder.</value>
+  </data>
+  <data name="Editor.Status.ExportNoOutput" xml:space="preserve">
+    <value>Choose the router's output port first.</value>
+  </data>
+  <data name="Editor.Status.ExportFailed" xml:space="preserve">
+    <value>Export failed: {error}</value>
+  </data>
   <data name="Events.LastLearned" xml:space="preserve">
     <value>{option} (last learned)</value>
   </data>

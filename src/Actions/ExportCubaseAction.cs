@@ -10,8 +10,6 @@ namespace MIDIRouter.Actions;
 
 internal sealed class ExportCubaseAction(MidiRouter router, DeckStore store, Func<INotificationService?> notifications) : IActionDefinition
 {
-	private const string FallbackFolderName = "Cubase export";
-
 	internal MidiRouter Router { get; } = router;
 
 	internal DeckStore Store { get; } = store;
@@ -60,25 +58,10 @@ internal sealed class ExportCubaseAction(MidiRouter router, DeckStore store, Fun
 				return ActionResult.Failed("no-decks", noDecks);
 			}
 
-			var targets = CubaseScript.DriverScriptFolders();
-			var fallback = targets.Count == 0;
-			if (fallback)
-			{
-				targets = [Path.Combine(DeckStore.Folder, FallbackFolderName)];
-			}
-
+			DeckExportResult result;
 			try
 			{
-				foreach (var target in targets)
-				{
-					foreach (var deck in snapshot.Decks)
-					{
-						var path = Path.Combine(target, CubaseScript.RelativePath(deck));
-						Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-						await File.WriteAllTextAsync(path, CubaseScript.Generate(deck, portName), context.CancellationToken)
-							.ConfigureAwait(false);
-					}
-				}
+				result = await DeckExport.ExportAsync(snapshot.Decks, portName, context.CancellationToken).ConfigureAwait(false);
 			}
 			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 			{
@@ -87,23 +70,11 @@ internal sealed class ExportCubaseAction(MidiRouter router, DeckStore store, Fun
 				return ActionResult.Failed("write-failed", failed);
 			}
 
-			var count = Count(snapshot.Decks.Count);
-			if (fallback)
-			{
-				await NotifyAsync(
-					Strings.Actions.ExportCubase.ExportedToFolder(count),
-					Strings.Actions.ExportCubase.ExportedToFolderDetail(targets[0]),
-					NotificationSeverity.Success).ConfigureAwait(false);
-			}
-			else
-			{
-				// Documents/Steinberg/<app>/MIDI Remote/Driver Scripts
-				var apps = string.Join(", ", targets.Select(target => Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(target)))));
-				await NotifyAsync(
-					Strings.Actions.ExportCubase.Exported(count, apps),
-					Strings.Actions.ExportCubase.ExportedDetail(),
-					NotificationSeverity.Success).ConfigureAwait(false);
-			}
+			var count = Count(result.Decks);
+			await NotifyAsync(
+				result.FallbackFolder is { } folder ? Strings.Actions.ExportCubase.ExportedToFolder(count) : Strings.Actions.ExportCubase.Exported(count, result.Apps),
+				result.FallbackFolder is { } fallback ? Strings.Actions.ExportCubase.ExportedToFolderDetail(fallback) : Strings.Actions.ExportCubase.ExportedDetail(),
+				NotificationSeverity.Success).ConfigureAwait(false);
 
 			return ActionResult.Success();
 		}

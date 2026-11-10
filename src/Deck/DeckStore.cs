@@ -30,8 +30,8 @@ internal sealed class DeckStore : IDisposable
 		    { "id": "pad2", "type": "pad", "label": "Pad 2", "x": 1, "y": 0, "note": 37 },
 		    { "id": "pad3", "type": "pad", "label": "Pad 3", "x": 2, "y": 0, "note": 38, "color": "#2E7D32" },
 		    { "id": "pad4", "type": "pad", "label": "Pad 4", "x": 3, "y": 0, "cc": 20, "color": "#B71C1C" },
-		    { "id": "fader1", "type": "fader", "label": "Fader 1", "x": 0, "y": 1, "w": 4, "cc": 21 },
-		    { "id": "fader2", "type": "fader", "label": "Fader 2", "x": 4, "y": 0, "h": 3, "cc": 22 },
+		    { "id": "fader1", "type": "hslider", "label": "Fader 1", "x": 0, "y": 1, "w": 4, "cc": 21 },
+		    { "id": "fader2", "type": "vslider", "label": "Fader 2", "x": 4, "y": 0, "h": 3, "cc": 22 },
 		    { "id": "pad5", "type": "pad", "label": "Pad 5", "x": 0, "y": 2, "note": 40 },
 		    { "id": "pad6", "type": "pad", "label": "Pad 6", "x": 1, "y": 2, "note": 41 },
 		    { "id": "pad7", "type": "pad", "label": "Pad 7", "x": 2, "y": 2, "note": 42 },
@@ -45,6 +45,7 @@ internal sealed class DeckStore : IDisposable
 	private FileSystemWatcher? _watcher;
 	private Timer? _reloadTimer;
 	private volatile DeckSnapshot _snapshot = DeckSnapshot.Empty;
+	private volatile Dictionary<string, string> _paths = new(StringComparer.Ordinal);
 
 	public DeckStore(ILogger logger)
 	{
@@ -115,6 +116,46 @@ internal sealed class DeckStore : IDisposable
 		Reload();
 	}
 
+	/// <summary>Writes the deck to its file, or to a new one named after its id, and reloads at once.</summary>
+	/// <exception cref="DeckLayoutException">The deck breaks a layout rule.</exception>
+	/// <exception cref="IOException">The file could not be written.</exception>
+	/// <exception cref="UnauthorizedAccessException">The file could not be written.</exception>
+	public void Save(DeckLayout deck)
+	{
+		deck.Validate();
+		Directory.CreateDirectory(Folder);
+		File.WriteAllText(_paths.GetValueOrDefault(deck.Id) ?? Path.Combine(Folder, deck.Id + ".json"), deck.ToJson());
+		Reload();
+	}
+
+	/// <summary>Creates an empty deck in a new file named after <paramref name="name"/>.</summary>
+	/// <exception cref="IOException">The file could not be written.</exception>
+	/// <exception cref="UnauthorizedAccessException">The file could not be written.</exception>
+	public DeckLayout Create(string name, int columns, int rows)
+	{
+		var stem = DeckLayout.ToId(name, "deck") is { Length: > 0 } id ? id : "deck";
+		var unique = stem;
+		for (var n = 2; _paths.ContainsKey(unique) || File.Exists(Path.Combine(Folder, unique + ".json")); n++)
+		{
+			unique = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{stem}-{n}");
+		}
+
+		var deck = new DeckLayout(unique, name, columns, rows, DeckLayout.DefaultChannel, []);
+		Save(deck);
+		return deck;
+	}
+
+	/// <exception cref="IOException">The file could not be deleted.</exception>
+	/// <exception cref="UnauthorizedAccessException">The file could not be deleted.</exception>
+	public void Delete(string deckId)
+	{
+		if (_paths.GetValueOrDefault(deckId) is { } path)
+		{
+			File.Delete(path);
+			Reload();
+		}
+	}
+
 	public void Dispose()
 	{
 		lock (_lock)
@@ -140,6 +181,7 @@ internal sealed class DeckStore : IDisposable
 		var decks = new List<DeckLayout>();
 		var errors = new List<DeckFileError>();
 		var ids = new HashSet<string>(StringComparer.Ordinal);
+		var paths = new Dictionary<string, string>(StringComparer.Ordinal);
 		var faderIds = new HashSet<string>(StringComparer.Ordinal);
 
 		string[] files;
@@ -165,7 +207,7 @@ internal sealed class DeckStore : IDisposable
 				}
 
 				var deck = DeckLayout.Parse(id, File.ReadAllText(path));
-				var faders = deck.Controls.Where(control => control.Kind == DeckControlKind.Fader).Select(deck.FaderVariableId).ToList();
+				var faders = deck.Controls.Where(control => control.IsSlider).Select(deck.FaderVariableId).ToList();
 				if (faders.FirstOrDefault(faderIds.Contains) is { } clash)
 				{
 					throw new DeckLayoutException($"A fader of another deck already uses the variable id \"{clash}\": rename this file or the fader.");
@@ -173,6 +215,7 @@ internal sealed class DeckStore : IDisposable
 
 				faderIds.UnionWith(faders);
 				decks.Add(deck);
+				paths[id] = path;
 			}
 			catch (Exception ex) when (ex is DeckLayoutException or IOException or UnauthorizedAccessException)
 			{
@@ -181,6 +224,7 @@ internal sealed class DeckStore : IDisposable
 			}
 		}
 
+		_paths = paths;
 		_snapshot = new DeckSnapshot(decks, errors);
 		_logger.Information("Loaded {Decks} deck(s) from {Folder}.", decks.Count, Folder);
 		Changed?.Invoke();

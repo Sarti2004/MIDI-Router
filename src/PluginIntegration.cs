@@ -210,7 +210,7 @@ internal sealed class PluginIntegration :
 			return Task.FromResult<IUiSession?>(null);
 		}
 
-		var view = new DeckEditorView(_decks, _logger);
+		var view = new DeckEditorView(_decks, _router, _logger);
 		return Task.FromResult<IUiSession?>(new ViewSession(new UiView(request.Surface, view.Root()), view.Dispose));
 	}
 
