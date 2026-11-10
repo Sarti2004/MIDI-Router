@@ -114,8 +114,55 @@ internal static class MixerView
 			],
 		};
 
-	/// <summary>The mixer as one block of a config page.</summary>
-	public static UiElement Preview(MixerModel model) => Fitted(model);
+	/// <summary>
+	/// The mixer on a config page, one strip per grid row. A component block on a page is one basis (120 px) high
+	/// whatever its frame says, so a single block would draw a 6 x 4 device 120 px high; a strip per row gives every
+	/// cell the full 120 px. An element taller than a row shows in each strip it crosses.
+	/// </summary>
+	public static UiElement Preview(MixerModel model) => new UiRepeat<string>
+	{
+		Key = "fr",
+		Items = UiValue.From<IReadOnlyList<string>>(() => [model.Device.Value.GetHashCode().ToString(CultureInfo.InvariantCulture)]),
+		KeySelector = key => key,
+		Template = (_, _) =>
+		{
+			var device = model.Device.Peek();
+
+			// In a strip a basis is one cell; in a folder it is about the whole mixer's height, device.Rows cells.
+			double s = device.Rows;
+			return new MacroDeck.Ui.Config.UiConfigStack
+			{
+				Key = "rows",
+				Gap = MacroDeck.Ui.Config.UiStackGaps.None,
+				Children =
+				[
+					.. Enumerable.Range(0, device.Rows).Select(y => new MacroDeck.Ui.Config.UiConfigStack
+					{
+						// As DoriDeck's MIDI keys page: a frame inside a wrapping row gets a size to draw at.
+						Key = string.Create(CultureInfo.InvariantCulture, $"r{y}"),
+						Direction = UiComponentDirections.Horizontal,
+						Gap = MacroDeck.Ui.Config.UiStackGaps.None,
+						Wrap = true,
+						Children =
+						[
+							new UiModifier
+							{
+								Key = "f",
+								Fill = true,
+								Frame = new UiFrame { AspectRatio = device.Columns },
+								Clip = UiComponentClips.Bounds,
+								Child = new UiLayer
+								{
+									Key = "p",
+									Children = [Background(model, "bg"), Grid(model, device, s, y)],
+								},
+							},
+						],
+					}),
+				],
+			};
+		},
+	};
 
 	/// <summary>
 	/// The larger of the editor's and the mixer's drawing of <paramref name="device"/>, in bytes as Macro Deck receives
@@ -158,7 +205,7 @@ internal static class MixerView
 				Child = new UiLayer
 				{
 					Key = "p",
-					Children = [Background(model, "bg"), Grid(model, device, s)],
+					Children = [Background(model, "bg"), Grid(model, device, s, null)],
 				},
 			};
 		},
@@ -170,11 +217,12 @@ internal static class MixerView
 			? new UiButton { Key = key, Fill = true, Background = Panel, Source = art.Panel, Fit = UiComponentImageFits.Cover }
 			: new UiModifier { Key = key + "-style", Background = PanelFace, Child = new UiStack { Key = key, Fill = true } };
 
-	private static UiGrid Grid(MixerModel model, VirtualDevice device, double s)
+	// The whole grid, or with row set only that row: elements crossing it then show as a one-row piece.
+	private static UiGrid Grid(MixerModel model, VirtualDevice device, double s, int? row)
 	{
 		var cells = new List<UiElement>();
 		var covered = new bool[device.Columns, device.Rows];
-		for (var y = 0; y < device.Rows; y++)
+		foreach (var y in row is { } only ? [only] : Enumerable.Range(0, device.Rows))
 		{
 			for (var x = 0; x < device.Columns; x++)
 			{
@@ -184,17 +232,21 @@ internal static class MixerView
 				}
 
 				var here = device.Elements.Where(element => element.X == x && element.Y == y).ToList();
-				if (here.FirstOrDefault(element => element.Kind != DeviceElementKind.SmallButton) is { } element)
+				var crossing = row is not null
+					? device.Elements.FirstOrDefault(element => element.Kind != DeviceElementKind.SmallButton && element.X == x && element.Covers(x, y))
+					: here.FirstOrDefault(element => element.Kind != DeviceElementKind.SmallButton);
+				if (crossing is { } element)
 				{
 					for (var cx = x; cx < x + element.Width; cx++)
 					{
-						for (var cy = y; cy < y + element.Height; cy++)
+						for (var cy = y; cy < y + (row is null ? element.Height : 1); cy++)
 						{
 							covered[cx, cy] = true;
 						}
 					}
 
-					cells.Add(element.IsSlider ? Slider(model, element, s) : Key(model, element, small: false, s));
+					var rows = row is null ? element.Height : 1;
+					cells.Add(element.IsSlider ? Slider(model, element, s, rows) : Key(model, element, small: false, s, rows));
 				}
 				else if (here.Count > 0)
 				{
@@ -212,9 +264,10 @@ internal static class MixerView
 			Key = "g",
 			Fill = true,
 			Columns = device.Columns,
-			Rows = device.Rows,
+			Rows = row is null ? device.Rows : 1,
 			Gap = B(s, CellGap),
-			Padding = B(s, PanelPadding),
+			// Strips meet edge to edge: half a gap above and below each keeps the rows a gap apart.
+			Padding = B(s, row is null ? PanelPadding : CellGap / 2),
 			Children = cells,
 		};
 	}
@@ -227,12 +280,12 @@ internal static class MixerView
 		Children =
 		[
 			.. Enumerable.Range(0, 2).Select(slot => smalls.FirstOrDefault(small => small.Slot == slot) is { } small
-				? (UiElement)Key(model, small, small: true, s)
+				? (UiElement)Key(model, small, small: true, s, 1)
 				: Empty(model, x, y, slot, CellKey(x, y) + (slot == 0 ? "-top" : "-bottom"))),
 		],
 	};
 
-	private static UiModifier Key(MixerModel model, DeviceElement element, bool small, double s)
+	private static UiModifier Key(MixerModel model, DeviceElement element, bool small, double s, int rows)
 	{
 		var lit = model.LitState(element);
 		var accent = element.Color ?? DefaultAccent;
@@ -269,12 +322,12 @@ internal static class MixerView
 			],
 		};
 
-		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, element.Width, element.Height, s);
+		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, element.Width, rows, s);
 	}
 
 	// A fader channel: in the mixer the readout, the fader and the label; in the editor's small preview just an icon
 	// and the label.
-	private static UiModifier Slider(MixerModel model, DeviceElement element, double s)
+	private static UiModifier Slider(MixerModel model, DeviceElement element, double s, int rows)
 	{
 		var vertical = element.Kind == DeviceElementKind.VerticalSlider;
 		var direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal;
@@ -330,7 +383,7 @@ internal static class MixerView
 		{
 			Key = element.Id,
 			ColumnSpan = element.Width,
-			RowSpan = element.Height,
+			RowSpan = rows,
 			Radius = B(s, KeyRadius),
 			BorderWidth = B(s, 0.003),
 			BorderColor = UiValue.From(() => model.Selected.Value == element.Id ? SelectedRim : Rim),

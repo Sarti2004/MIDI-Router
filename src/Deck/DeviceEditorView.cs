@@ -56,16 +56,7 @@ internal sealed class DeviceEditorView : IDisposable
 		[
 			DeviceSettings(),
 			Palette(),
-			// As the keyboard of DoriDeck's MIDI keys page: a frame with an aspect inside a wrapping row gives the
-			// components a size to draw at.
-			new UiConfigStack
-			{
-				Key = "pv",
-				Direction = UiComponentDirections.Horizontal,
-				Gap = UiStackGaps.None,
-				Wrap = true,
-				Children = [MixerView.Preview(_mixer)],
-			},
+			MixerView.Preview(_mixer),
 			new UiBanner { Key = "status", Severity = UiValue.From(() => _status.Value.Severity), Text = UiText.Optional(() => _status.Value.Text) },
 			new UiWhen
 			{
