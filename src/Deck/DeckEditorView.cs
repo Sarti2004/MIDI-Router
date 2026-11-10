@@ -10,42 +10,30 @@ using Serilog;
 namespace MIDIRouter.Deck;
 
 /// <summary>
-/// Spike for the deck editor page. Answers before the editor is built:
-/// 1. Does a page render a UiGrid with spans, and do placeholder cells keep every control at its x/y?
-/// 2. Which tap events reach a grid cell (press, tap, long-press)?
-/// 3. How fast does the page redraw? Pressing an empty cell places a temporary element there.
-/// 4. Does a half-cell pair of small buttons (a vertical stack in one cell) render and take presses per half?
-/// 5. What does a drag report? Drag a cell by exactly one cell and read drag-end's payload: it is the distance
-///    moved, and the unit decides whether drag-to-move can work out the target cell.
-/// 6. Components (UiGrid, UiButton) take clicks but draw nothing inside a config page, even when sized. The page
-///    shows the grid as rows of config buttons, weighted so cells line up; a second page (CanvasPageId) has a
-///    component tree as its root, to see whether that draws.
+/// Spike for the deck editor page. What earlier rounds found: components (UiGrid, UiButton) draw nothing on a plugin
+/// page, whether inside the config stack or as the page root, and config buttons ignore RowWeight and size to their
+/// label. This round draws the grid as icon-only config buttons, which the host draws as equal squares, and tries
+/// selection: pressing an element highlights every cell it covers, pressing an empty cell places one.
 /// </summary>
 internal sealed class DeckEditorView : IDisposable
 {
 	public const string PageId = "decks";
-	public const string CanvasPageId = "decks-canvas";
 
 	// Not a file: an empty 6 x 4 grid to place elements on.
 	private static readonly DeckLayout BlankDeck = new("blank-6x4", "Blank 6 × 4 (not saved)", 6, 4, []);
 
 	private const string PlaceButton = "button";
 	private const string PlaceSmall = "small";
-
-	private const string DefaultPadColor = "#2563EB";
-	private const string FaderColor = "#374151";
-	private const string EmptyColor = "#1F2937";
-	private const string TemporaryColor = "#7C3AED";
-	private const string SmallColor = "#0E7490";
+	private const string PlaceSlider = "slider";
 
 	private readonly DeckStore _store;
 	private readonly ILogger _logger;
 	private readonly UiState<int> _revision = new(0);
 	private readonly UiState<string> _deckId = new(BlankDeck.Id);
 	private readonly UiState<string> _placeMode = new(PlaceButton);
-	private readonly UiState<string> _lastEvent = new("Press a cell.");
+	private readonly UiState<string?> _selected = new(null);
+	private readonly UiState<string> _status = new("Press an empty cell to place, or an element to select it.");
 	private readonly UiState<IReadOnlyDictionary<(int X, int Y), string>> _temporary = new(new Dictionary<(int X, int Y), string>());
-	private int _dragEvents;
 
 	public DeckEditorView(DeckStore store, ILogger logger)
 	{
@@ -81,6 +69,7 @@ internal sealed class DeckEditorView : IDisposable
 				[
 					UiOption.Of(PlaceButton, LocalizedText.FromLiteral("Button")),
 					UiOption.Of(PlaceSmall, LocalizedText.FromLiteral("Two small buttons")),
+					UiOption.Of(PlaceSlider, LocalizedText.FromLiteral("Slider")),
 				]),
 				Binding = Bind.To(_placeMode),
 			},
@@ -88,204 +77,93 @@ internal sealed class DeckEditorView : IDisposable
 			new UiRepeat<string>
 			{
 				Key = "grid-repeat",
-				Items = UiValue.From<IReadOnlyList<string>>(() => [GridKey()]),
+				Items = UiValue.From<IReadOnlyList<string>>(() =>
+				[
+					string.Create(CultureInfo.InvariantCulture,
+						$"{_revision.Value}-{_deckId.Value}-{_selected.Value}-{string.Join('_', _temporary.Value.Select(cell => $"{cell.Key.X}x{cell.Key.Y}{cell.Value}"))}"),
+				]),
 				KeySelector = key => key,
-				Template = (_, _) => FormGrid(CurrentDeck()),
+				Template = (_, _) => IconGrid(CurrentDeck()),
 			},
-			new UiBanner { Key = "last-event", Severity = "info", Text = UiText.From(() => _lastEvent.Value) },
+			new UiBanner { Key = "status", Severity = "info", Text = UiText.From(() => _status.Value) },
 		],
 	};
 
-	// The second page: a component tree as the root, with the same grid.
-	public UiStack CanvasRoot() => new()
-	{
-		Key = "canvas-root",
-		Direction = UiComponentDirections.Vertical,
-		Fill = true,
-		Children =
-		[
-			new UiRepeat<string>
-			{
-				Key = "canvas-repeat",
-				Items = UiValue.From<IReadOnlyList<string>>(() => [GridKey()]),
-				KeySelector = key => key,
-				Template = (_, _) => Grid(CurrentDeck(), "grid-e") with { Fill = true },
-			},
-		],
-	};
-
-	private UiGrid Grid(DeckLayout deck, string key)
+	// One row of icon-only config buttons per grid row. A control covering several cells shows in each of them, all
+	// highlighted when it is selected.
+	private UiConfigStack IconGrid(DeckLayout deck)
 	{
 		var temporary = _temporary.Peek();
-		var covered = new bool[deck.Columns, deck.Rows];
-		var cells = new List<UiElement>();
-		for (var y = 0; y < deck.Rows; y++)
-		{
-			for (var x = 0; x < deck.Columns; x++)
-			{
-				if (deck.Controls.FirstOrDefault(control => control.X == x && control.Y == y) is { } control)
-				{
-					for (var cx = x; cx < x + control.Width; cx++)
-					{
-						for (var cy = y; cy < y + control.Height; cy++)
-						{
-							covered[cx, cy] = true;
-						}
-					}
-
-					var color = control.Kind == DeckControlKind.Fader ? FaderColor : control.Color ?? DefaultPadColor;
-					cells.Add(Cell(x, y, control.Width, control.Height, color, control.Label, control.Id));
-				}
-				else if (covered[x, y])
-				{
-					continue;
-				}
-				else if (temporary.TryGetValue((x, y), out var kind))
-				{
-					cells.Add(kind == PlaceSmall ? SmallPair(x, y) : Cell(x, y, 1, 1, TemporaryColor, "New", "new"));
-				}
-				else
-				{
-					cells.Add(Cell(x, y, 1, 1, EmptyColor, "+", null));
-				}
-			}
-		}
-
-		return new UiGrid
-		{
-			Key = key,
-			Columns = deck.Columns,
-			Rows = deck.Rows,
-			Gap = 8,
-			MinCellSize = 64,
-			Children = cells,
-		};
-	}
-
-	// Config buttons in weighted rows: every cell has the same width and a control spans its width. Rows can't merge,
-	// so a control taller than one cell shows on each row it covers.
-	private UiConfigStack FormGrid(DeckLayout deck) => new()
-	{
-		Key = "grid-d",
-		Children = [.. Enumerable.Range(0, deck.Rows).Select(y => FormRow(deck, y))],
-	};
-
-	private UiConfigStack FormRow(DeckLayout deck, int y)
-	{
-		var temporary = _temporary.Peek();
-		var cells = new List<UiElement>();
-		for (var x = 0; x < deck.Columns; x++)
-		{
-			var control = deck.Controls.FirstOrDefault(control =>
-				x >= control.X && x < control.X + control.Width && y >= control.Y && y < control.Y + control.Height);
-			if (control is not null)
-			{
-				cells.Add(FormButton(x, y, string.Empty, control.Label, UiButtonVariants.Primary, control.Id, control.Width));
-				x += control.Width - 1;
-			}
-			else if (temporary.TryGetValue((x, y), out var kind) && kind == PlaceSmall)
-			{
-				cells.Add(FormButton(x, y, "-top", "S1", UiButtonVariants.Secondary, "small-top", 0.5));
-				cells.Add(FormButton(x, y, "-bottom", "S2", UiButtonVariants.Secondary, "small-bottom", 0.5));
-			}
-			else if (kind is not null)
-			{
-				cells.Add(FormButton(x, y, string.Empty, "New", UiButtonVariants.Secondary, "new", 1));
-			}
-			else
-			{
-				cells.Add(FormButton(x, y, string.Empty, "+", UiButtonVariants.Ghost, null, 1));
-			}
-		}
-
+		var selected = _selected.Peek();
 		return new UiConfigStack
 		{
-			Key = string.Create(CultureInfo.InvariantCulture, $"row-{y}"),
-			Direction = UiComponentDirections.Horizontal,
-			Children = cells,
+			Key = "grid",
+			Children =
+			[
+				.. Enumerable.Range(0, deck.Rows).Select(y => new UiConfigStack
+				{
+					Key = string.Create(CultureInfo.InvariantCulture, $"row-{y}"),
+					Direction = UiComponentDirections.Horizontal,
+					Children =
+					[
+						.. Enumerable.Range(0, deck.Columns).Select(x =>
+						{
+							var control = deck.Controls.FirstOrDefault(control =>
+								x >= control.X && x < control.X + control.Width && y >= control.Y && y < control.Y + control.Height);
+							var (id, label, icon) = control is not null
+								? (control.Id, control.Label, control.Kind == DeckControlKind.Fader ? UiIcons.Sliders : UiIcons.ActionButtonType)
+								: temporary.TryGetValue((x, y), out var kind)
+									? (TemporaryId(x, y), Describe(kind), Icon(kind))
+									: ((string?)null, "Empty", UiIcons.Plus);
+							var variant = id is null ? UiButtonVariants.Ghost
+								: id == selected ? UiButtonVariants.Primary
+								: UiButtonVariants.Secondary;
+							return new UiConfigButton
+							{
+								Key = string.Create(CultureInfo.InvariantCulture, $"cell-{x}-{y}"),
+								Label = label,
+								Icon = icon,
+								Variant = variant,
+								Events = [UiEventHandler.On(UiConfigEvents.Activate, () => Pressed(x, y, id, label))],
+							};
+						}),
+					],
+				}),
+			],
 		};
 	}
 
-	private UiConfigButton FormButton(int x, int y, string suffix, string label, string variant, string? controlId, double weight) => new()
+	private void Pressed(int x, int y, string? id, string label)
 	{
-		Key = string.Create(CultureInfo.InvariantCulture, $"button-{x}-{y}{suffix}"),
-		Label = label,
-		Variant = variant,
-		RowWeight = weight,
-		Events =
-		[
-			UiEventHandler.On(UiConfigEvents.Activate, () => Pressed(x, y, controlId, UiConfigEvents.Activate)),
-		],
-	};
-
-	private UiButton Cell(int x, int y, int width, int height, string color, string label, string? controlId) =>
-		Button(Key(x, y), width, height, color, label, Events(x, y, controlId));
-
-	// One grid cell holding two half-height buttons, the "small button" of the editor.
-	private UiStack SmallPair(int x, int y) => new()
-	{
-		Key = Key(x, y),
-		Direction = UiComponentDirections.Vertical,
-		Gap = 4,
-		Children =
-		[
-			Button(Key(x, y) + "-top", 1, 1, SmallColor, "S1", Events(x, y, "small-top"), fill: true),
-			Button(Key(x, y) + "-bottom", 1, 1, SmallColor, "S2", Events(x, y, "small-bottom"), fill: true),
-		],
-	};
-
-	private static UiButton Button(string key, int width, int height, string color, string label, IReadOnlyList<UiEventHandler> events, bool fill = false) => new()
-	{
-		Key = key,
-		ColumnSpan = width,
-		RowSpan = height,
-		Fill = fill,
-		Background = color,
-		Corner = UiComponentButtonCorners.Tile,
-		Children = [new UiTextRun { Key = key + "-label", Text = label, Align = "center", Role = "primary" }],
-		Events = events,
-	};
-
-	private UiEventHandler[] Events(int x, int y, string? controlId) =>
-	[
-		UiEventHandler.On(UiComponentEvents.Press, () => Pressed(x, y, controlId, UiComponentEvents.Press)),
-		UiEventHandler.On(UiComponentEvents.Tap, () => Pressed(x, y, controlId, UiComponentEvents.Tap)),
-		UiEventHandler.On(UiComponentEvents.LongPress, () => Pressed(x, y, controlId, UiComponentEvents.LongPress)),
-		UiEventHandler.On(UiComponentEvents.Drag, _ => Interlocked.Increment(ref _dragEvents)),
-		UiEventHandler.On(UiComponentEvents.DragEnd, data => DragEnded(x, y, controlId, data)),
-	];
-
-	private void Pressed(int x, int y, string? controlId, string eventName)
-	{
-		_logger.Information("Editor spike: {Event} on cell {X},{Y} ({Control}).", eventName, x, y, controlId ?? "empty");
-		_lastEvent.Set(string.Create(CultureInfo.InvariantCulture, $"{eventName} on cell {x},{y}: {controlId ?? "empty"} ({DateTime.Now:HH:mm:ss.fff})"));
-
-		// Press an empty cell to place; long-press a placed element to remove it, so presses on it can be tested.
-		var temporary = new Dictionary<(int X, int Y), string>(_temporary.Peek());
-		var changed = eventName switch
+		_logger.Information("Editor spike: press on cell {X},{Y} ({Element}).", x, y, id ?? "empty");
+		if (id is null)
 		{
-			UiComponentEvents.Press or UiConfigEvents.Activate when controlId is null => temporary.TryAdd((x, y), _placeMode.Peek()),
-			UiComponentEvents.LongPress => temporary.Remove((x, y)),
-			_ => false,
-		};
-
-		if (changed)
-		{
-			_temporary.Set(temporary);
+			var mode = _placeMode.Peek();
+			_temporary.Set(new Dictionary<(int X, int Y), string>(_temporary.Peek()) { [(x, y)] = mode });
+			_selected.Set(TemporaryId(x, y));
+			_status.Set(string.Create(CultureInfo.InvariantCulture, $"Placed {Describe(mode)} at {x},{y} ({DateTime.Now:HH:mm:ss.fff})."));
+			return;
 		}
+
+		_selected.Set(id);
+		_status.Set(string.Create(CultureInfo.InvariantCulture, $"Selected {label} ({id}) from cell {x},{y} ({DateTime.Now:HH:mm:ss.fff})."));
 	}
 
-	private void DragEnded(int x, int y, string? controlId, UiEventData data)
+	private static string TemporaryId(int x, int y) => string.Create(CultureInfo.InvariantCulture, $"new-{x}-{y}");
+
+	private static string Describe(string kind) => kind switch
 	{
-		var moves = Interlocked.Exchange(ref _dragEvents, 0);
-		var payload = data.Raw?.GetRawText() ?? "null";
-		_logger.Information("Editor spike: drag-end on cell {X},{Y} ({Control}) after {Moves} drag events: {Payload}.",
-			x, y, controlId ?? "empty", moves, payload);
-		_lastEvent.Set(string.Create(CultureInfo.InvariantCulture, $"drag-end on cell {x},{y} after {moves} drag events: {payload}"));
-	}
+		PlaceSmall => "Two small buttons",
+		PlaceSlider => "Slider",
+		_ => "Button",
+	};
 
-	private string GridKey() => string.Create(CultureInfo.InvariantCulture,
-		$"{_revision.Value}-{_deckId.Value}-{string.Join('_', _temporary.Value.Select(cell => $"{cell.Key.X}x{cell.Key.Y}{cell.Value}"))}");
+	private static string Icon(string kind) => kind switch
+	{
+		PlaceSmall => UiIcons.Grid,
+		PlaceSlider => UiIcons.Sliders,
+		_ => UiIcons.ActionButtonType,
+	};
 
 	private DeckLayout CurrentDeck()
 	{
@@ -296,8 +174,7 @@ internal sealed class DeckEditorView : IDisposable
 	private void OnStoreChanged()
 	{
 		_temporary.Set(new Dictionary<(int X, int Y), string>());
+		_selected.Set(null);
 		_revision.Set(_revision.Peek() + 1);
 	}
-
-	private static string Key(int x, int y) => string.Create(CultureInfo.InvariantCulture, $"cell-{x}-{y}");
 }
