@@ -39,7 +39,7 @@
         <Content Include="Assets\icon.svg" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\icon.png" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\Audio\*.wav" CopyToOutputDirectory="PreserveNewest" />
-        <Content Include="Assets\Mixer\*.png;Assets\Mixer\*.jpg" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="Assets\Mixer\*.jpg" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "include": ["Assets/Audio/control-mode.wav", "Assets/Audio/play-mode.wav", "Assets/Mixer/brushed-metal.jpg", "Assets/Mixer/fader-cap-vertical.png", "Assets/Mixer/fader-cap-horizontal.png", "Assets/Mixer/fader-track-vertical.png", "Assets/Mixer/fader-track-horizontal.png"],
+  "include": ["Assets/Audio/control-mode.wav", "Assets/Audio/play-mode.wav", "Assets/Mixer/brushed-metal.jpg"],
   "targets": {
     "win-x64": {
       "executable": "dotnet",

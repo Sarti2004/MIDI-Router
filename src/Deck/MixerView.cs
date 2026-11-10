@@ -9,7 +9,7 @@ using MacroDeck.Ui.Runtime;
 namespace MIDIRouter.Deck;
 
 /// <summary>The mixer's images, registered with Macro Deck at startup; without them it draws plain shapes.</summary>
-internal sealed record MixerArt(UiResource Panel, UiResource CapVertical, UiResource CapHorizontal, UiResource TrackVertical, UiResource TrackHorizontal)
+internal sealed record MixerArt(UiResource Panel)
 {
 	public static string Folder { get; } = Path.Combine(AppContext.BaseDirectory, "Assets", "Mixer");
 }
@@ -45,14 +45,14 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 }
 
 /// <summary>
-/// Draws the virtual device as a mixer: brushed metal with satin key caps and fader channels, each a slotted track with
-/// a scale and a fader cap. Cells are square; the drawing keeps the grid's aspect inside whatever it is given. The tree
+/// Draws the virtual device as a mixer: brushed metal with satin key caps and fader channels around Macro Deck's own
+/// slider. Cells are square; the drawing keeps the grid's aspect inside whatever it is given. The tree
 /// is kept flat and small: Macro Deck sends at most 32 levels and 192 KB, and a change to the device redraws the mixer
 /// in one patch of at most 64 KB.
 /// </summary>
 /// <remarks>
 /// Sizes are in basis units, about the folder's height. Inside a grid cell, fractions of a parent size nothing and grid
-/// cells are always square, so the fader cap is an image offset within a full-size button.
+/// cells are always square: only Fill and the grid's own spans size things reliably.
 /// </remarks>
 internal static class MixerView
 {
@@ -64,7 +64,6 @@ internal static class MixerView
 	private const string MutedLegend = "#A4A7AE";
 	private const string Transparent = "#00000000";
 	private const string Channel = "#121315D9";
-	private const string SlotColor = "#050506";
 	private const string DefaultAccent = "#5B8DEF";
 
 	private const double CellGap = 0.018;
@@ -73,18 +72,9 @@ internal static class MixerView
 	private const double LabelSize = 0.032;
 	private const double SmallLabelSize = 0.026;
 	private const double LedHeight = 0.012;
-	private const double SlotWidth = 0.008;
 	private const double IconSize = 0.05;
 
-	// The track image's scale runs from 12% to 88% of its length: the cap's centre travels between those ticks.
-	private const double TrackMargin = 0.12;
-
-	// The cap image is 1.8 times as wide as it is deep. Zoomed to CapWidth it spans that much of the fader's width;
-	// it stays within the end margins while its depth is at most 2 * TrackMargin of the fader's length, which a fader
-	// of n cells allows up to a zoom of CapFit * (n - ChannelExtras), its readout and label taking the rest.
-	private const double CapWidth = 0.9;
-	private const double CapFit = 2 * TrackMargin * 1.8;
-	private const double ChannelExtras = 0.4;
+	private const double FaderThickness = 0.02;
 
 
 	private static readonly UiGradient PanelFace = UiGradient.Linear(
@@ -312,7 +302,6 @@ internal static class MixerView
 		else
 		{
 			var level = model.Level(element);
-			var length = vertical ? element.Height : element.Width;
 			var readout = new UiTextRun
 			{
 				Key = "val",
@@ -323,17 +312,7 @@ internal static class MixerView
 				Align = UiComponentAlignments.Center,
 				MaxLines = 1,
 			};
-			var fader = new UiLayer
-			{
-				Key = "fd",
-				Fill = true,
-				Children =
-				[
-					Track(model, vertical, s),
-					.. Cap(model, vertical, length, level),
-					Input(model, element, vertical, level),
-				],
-			};
+			var fader = Fader(element, vertical, level, s, model);
 
 			channel = new UiStack
 			{
@@ -361,62 +340,16 @@ internal static class MixerView
 		};
 	}
 
-	// The track image fills the fader; its end ticks sit at TrackMargin from either end.
-	private static UiElement Track(MixerModel model, bool vertical, double s) =>
-		model.Art is { } art
-			? new UiButton { Key = "tr", Fill = true, Background = Transparent, Source = vertical ? art.TrackVertical : art.TrackHorizontal, Fit = UiComponentImageFits.Contain }
-			: new UiStack
-			{
-				Key = "tr",
-				Fill = true,
-				Direction = vertical ? UiComponentDirections.Horizontal : UiComponentDirections.Vertical,
-				Justify = UiComponentJustify.Center,
-				Children = [Slot("trs", SlotColor, vertical, s)],
-			};
-
-	private static UiModifier Slot(string key, string color, bool vertical, double s) => new()
+	// Macro Deck's own slider, in the element's color.
+	private static UiSlider Fader(DeviceElement element, bool vertical, UiState<double> level, double s, MixerModel model) => new()
 	{
-		Key = key + "f",
-		Frame = vertical ? new UiFrame { Width = L(s, SlotWidth) } : new UiFrame { Height = L(s, SlotWidth) },
-		Child = new UiShape { Key = key, Shape = UiComponentShapes.Capsule, Color = color },
-	};
-
-	// The cap image covers the whole fader, fitted, then scaled down to a cap and moved so its centre sits on the
-	// level: an image's offset moves it by a share of its own box, the one placement that holds inside a grid cell.
-	// Its centre travels between the track's end ticks. Without the image, the slider's own thumb shows instead.
-	private static IEnumerable<UiElement> Cap(MixerModel model, bool vertical, int length, UiState<double> level)
-	{
-		if (model.Art is not { } art)
-		{
-			yield break;
-		}
-
-		// The cap fills most of the fader's width, but on a short fader it stays within the margins at the ends.
-		var zoom = Math.Min(CapWidth, CapFit * (length - ChannelExtras));
-		yield return new UiButton
-		{
-			Key = "ci",
-			Fill = true,
-			Background = Transparent,
-			Source = vertical ? art.CapVertical : art.CapHorizontal,
-			Fit = UiComponentImageFits.Contain,
-			Zoom = zoom,
-			OffsetX = vertical ? 0 : UiValue.From(() => TrackMargin + (level.Value * (1 - (2 * TrackMargin))) - 0.5),
-			OffsetY = vertical ? UiValue.From(() => TrackMargin + ((1 - level.Value) * (1 - (2 * TrackMargin))) - 0.5) : 0,
-		};
-	}
-
-	// On top and invisible (no track, no thumb): it takes the touches. Relative, so a touch doesn't jump the cap.
-	private static UiSlider Input(MixerModel model, DeviceElement element, bool vertical, UiState<double> level) => new()
-	{
-		Key = "in",
+		Key = "fd",
 		Fill = true,
 		Level = UiValue.From(() => level.Value),
 		Step = 1.0 / 127,
 		Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-		Interaction = UiComponentSliderInteractions.Relative,
-		LevelColor = model.Art is null ? element.Color ?? DefaultAccent : Transparent,
-		Thickness = UiSize.FromBasis(model.Art is null ? 0.02 : 0.0001),
+		LevelColor = element.Color ?? DefaultAccent,
+		Thickness = B(s, FaderThickness),
 		Events =
 		[
 			UiEventHandler.OnAsync(UiComponentEvents.Adjust, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
