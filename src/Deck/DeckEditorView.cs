@@ -17,6 +17,8 @@ namespace MIDIRouter.Deck;
 /// 4. Does a half-cell pair of small buttons (a vertical stack in one cell) render and take presses per half?
 /// 5. What does a drag report? Drag a cell by exactly one cell and read drag-end's payload: it is the distance
 ///    moved, and the unit decides whether drag-to-move can work out the target cell.
+/// 6. The grid took clicks but drew nothing inside the config stack, so it is shown four ways (A-D) to find one
+///    that renders: as is, with a height, inside a sized component stack, and as rows of config buttons.
 /// </summary>
 internal sealed class DeckEditorView : IDisposable
 {
@@ -90,15 +92,42 @@ internal sealed class DeckEditorView : IDisposable
 						$"{_revision.Value}-{_deckId.Value}-{string.Join('_', _temporary.Value.Select(cell => $"{cell.Key.X}x{cell.Key.Y}{cell.Value}"))}"),
 				]),
 				KeySelector = key => key,
-				Template = (_, _) => Grid(),
+				Template = (_, _) => Variants(),
 			},
 			new UiBanner { Key = "last-event", Severity = "info", Text = UiText.From(() => _lastEvent.Value) },
 		],
 	};
 
-	private UiElement Grid()
+	private UiConfigStack Variants()
 	{
 		var deck = CurrentDeck();
+		var height = UiSize.FromBasis(deck.Rows * 80);
+		return new UiConfigStack
+		{
+			Key = "variants",
+			Children =
+			[
+				new UiHeading { Key = "a-title", Text = "A: grid as is" },
+				Grid(deck, "grid-a"),
+				new UiHeading { Key = "b-title", Text = "B: grid with a height" },
+				Grid(deck, "grid-b") with { MainSize = height },
+				new UiHeading { Key = "c-title", Text = "C: grid in a sized component stack" },
+				new UiStack
+				{
+					Key = "stack-c",
+					Direction = UiComponentDirections.Vertical,
+					MainSize = height,
+					Fill = true,
+					Children = [Grid(deck, "grid-c") with { Fill = true }],
+				},
+				new UiHeading { Key = "d-title", Text = "D: rows of config buttons" },
+				FormGrid(deck),
+			],
+		};
+	}
+
+	private UiGrid Grid(DeckLayout deck, string key)
+	{
 		var temporary = _temporary.Peek();
 		var covered = new bool[deck.Columns, deck.Rows];
 		var cells = new List<UiElement>();
@@ -136,12 +165,51 @@ internal sealed class DeckEditorView : IDisposable
 
 		return new UiGrid
 		{
-			Key = "grid",
+			Key = key,
 			Columns = deck.Columns,
 			Rows = deck.Rows,
 			Gap = 8,
 			MinCellSize = 64,
 			Children = cells,
+		};
+	}
+
+	// No spans: a control shows in every cell it covers.
+	private UiConfigStack FormGrid(DeckLayout deck)
+	{
+		var temporary = _temporary.Peek();
+		return new UiConfigStack
+		{
+			Key = "grid-d",
+			Children =
+			[
+				.. Enumerable.Range(0, deck.Rows).Select(y => new UiConfigStack
+				{
+					Key = string.Create(CultureInfo.InvariantCulture, $"row-{y}"),
+					Direction = UiComponentDirections.Horizontal,
+					Children =
+					[
+						.. Enumerable.Range(0, deck.Columns).Select(x =>
+						{
+							var control = deck.Controls.FirstOrDefault(control =>
+								x >= control.X && x < control.X + control.Width && y >= control.Y && y < control.Y + control.Height);
+							var (label, variant, id) = (control, temporary.TryGetValue((x, y), out var kind)) switch
+							{
+								({ } c, _) => (c.Label, UiButtonVariants.Primary, (string?)c.Id),
+								(null, true) => (kind == PlaceSmall ? "S1 | S2" : "New", UiButtonVariants.Secondary, "new"),
+								_ => ("+", UiButtonVariants.Ghost, null),
+							};
+							return new UiConfigButton
+							{
+								Key = string.Create(CultureInfo.InvariantCulture, $"button-{x}-{y}"),
+								Label = label,
+								Variant = variant,
+								Events = [UiEventHandler.On(UiConfigEvents.Activate, () => Pressed(x, y, id, UiConfigEvents.Activate))],
+							};
+						}),
+					],
+				}),
+			],
 		};
 	}
 
@@ -191,7 +259,7 @@ internal sealed class DeckEditorView : IDisposable
 		var temporary = new Dictionary<(int X, int Y), string>(_temporary.Peek());
 		var changed = eventName switch
 		{
-			UiComponentEvents.Press when controlId is null => temporary.TryAdd((x, y), _placeMode.Peek()),
+			UiComponentEvents.Press or UiConfigEvents.Activate when controlId is null => temporary.TryAdd((x, y), _placeMode.Peek()),
 			UiComponentEvents.LongPress => temporary.Remove((x, y)),
 			_ => false,
 		};
