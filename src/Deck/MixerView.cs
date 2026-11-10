@@ -76,6 +76,9 @@ internal static class MixerView
 
 	private const double FaderThickness = 0.02;
 
+	// The scale of the editor's preview, where a basis is one cell.
+	private const double PreviewScale = 4;
+
 
 	private static readonly UiGradient PanelFace = UiGradient.Linear(
 		180,
@@ -128,8 +131,9 @@ internal static class MixerView
 		{
 			var device = model.Device.Peek();
 
-			// In a block a basis is one cell; in a folder it is about the whole mixer's height, device.Rows cells.
-			double s = device.Rows;
+			// In a block a basis is one cell. Sizes are tuned for a folder with four rows, so four keeps a cell's label
+			// and icon at the same share of the cell.
+			const double s = PreviewScale;
 			return new MacroDeck.Ui.Config.UiConfigStack
 			{
 				Key = "rows",
@@ -156,21 +160,13 @@ internal static class MixerView
 				? SmallPair(model, x, y, smalls, s)
 				: Empty(model, x, y, 0, CellKey(x, y));
 
+		// Plain cells on the page: no panel behind them. Half a gap around each keeps neighbours a gap apart.
 		return new UiModifier
 		{
 			Key = string.Create(CultureInfo.InvariantCulture, $"c{x}"),
 			Fill = true,
 			Frame = new UiFrame { AspectRatio = 1 },
-			Child = new UiLayer
-			{
-				Key = "p",
-				Children =
-				[
-					Background(model, "bg"),
-					// Half a gap around each cell keeps neighbouring cells a gap apart.
-					new UiGrid { Key = "g", Fill = true, Columns = 1, Rows = 1, Padding = B(s, CellGap / 2), Children = [content] },
-				],
-			},
+			Child = new UiGrid { Key = "g", Columns = 1, Rows = 1, Padding = B(s, CellGap / 2), Children = [content] },
 		};
 	}
 
@@ -328,7 +324,7 @@ internal static class MixerView
 			],
 		};
 
-		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, columns, rows, s);
+		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, columns, rows, model.Editing ? 0 : s);
 	}
 
 	// A fader channel: in the mixer the readout, the fader and the label; in the editor's small preview just an icon
@@ -390,7 +386,7 @@ internal static class MixerView
 			Key = element.Id,
 			ColumnSpan = columns,
 			RowSpan = rows,
-			Radius = B(s, KeyRadius),
+			Radius = B(model.Editing ? 0 : s, KeyRadius),
 			BorderWidth = B(s, 0.003),
 			BorderColor = UiValue.From(() => model.Selected.Value == element.Id ? SelectedRim : Rim),
 			Clip = UiComponentClips.Bounds,
@@ -441,11 +437,12 @@ internal static class MixerView
 			: new UiStack { Key = key };
 
 	// Background and radius style the button itself, so the modifier emits no node: the grid spans go on the button.
-	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height, double s) => new()
+	// cornerScale 0 gives square corners.
+	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height, double cornerScale) => new()
 	{
 		Key = key,
 		Background = UiBackgroundValue.From(() => lit() ? KeyFaceLit : KeyFace),
-		Radius = B(s, KeyRadius),
+		Radius = B(cornerScale, KeyRadius),
 		AccessibilityLabel = UiText.Of(label),
 		Child = button with
 		{
