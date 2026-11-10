@@ -51,9 +51,8 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 /// in one patch of at most 64 KB.
 /// </summary>
 /// <remarks>
-/// Sizes are in basis units. A folder's basis is about the folder's height, so the numbers below are fractions of it;
-/// a config page's basis is a fixed 120 px, so the editor's preview is given a height in basis units and every size is
-/// scaled by it to keep the same proportions.
+/// Sizes are in basis units, about the folder's height. Fractions of a parent don't size anything inside a grid cell,
+/// so the fader places its cap and level with row (or column) spans of a grid, which do.
 /// </remarks>
 internal static class MixerView
 {
@@ -77,15 +76,16 @@ internal static class MixerView
 	private const double SlotWidth = 0.008;
 	private const double IconSize = 0.05;
 
-	// The track image's scale runs from 40 px to 720 px of its 760: the share of its length before the first tick.
-	private const double TrackMargin = 40.0 / 760;
+	// The track image's scale runs from 12% to 88% of its length: the cap's centre travels between those ticks.
+	private const double TrackMargin = 0.12;
 
-	// The cap's share of the fader: a fader two cells long has a cap about a fifth of it.
+	// The cap's share of the fader: a fader two cells long has a cap about a fifth of it. At most twice the margin,
+	// so the cap stays inside the fader at both ends.
 	private const double CapLength = 0.36;
+	private const double MaxCap = 2 * TrackMargin;
 
-	// The editor's preview: this many basis units high (120 px each on a page), at most this many wide.
-	private const double PreviewHeight = 3.5;
-	private const double PreviewMaxWidth = 7.0;
+	// The cap moves in steps of 1/Steps of the fader.
+	private const int Steps = 100;
 
 	private static readonly UiGradient PanelFace = UiGradient.Linear(
 		180,
@@ -119,13 +119,13 @@ internal static class MixerView
 					Justify = UiComponentJustify.Center,
 					Align = UiComponentAlignments.Center,
 					Padding = UiSize.FromBasis(0.02),
-					Children = [Fitted(model, 1)],
+					Children = [Fitted(model)],
 				},
 			],
 		};
 
 	/// <summary>The mixer as one block of a config page.</summary>
-	public static UiElement Preview(MixerModel model) => Fitted(model, 0);
+	public static UiElement Preview(MixerModel model) => Fitted(model);
 
 	/// <summary>
 	/// The larger of the editor's and the mixer's drawing of <paramref name="device"/>, in bytes as Macro Deck receives
@@ -145,9 +145,8 @@ internal static class MixerView
 			MacroDeck.Ui.Model.Serialization.UiCanonicalJson.SerializeToUtf8Bytes(liveView.Tree).Length);
 	}
 
-	// A frame with an aspect gives the components a size to draw at. scale is 0 for the editor's preview: its height
-	// then sets the scale.
-	private static UiRepeat<string> Fitted(MixerModel model, double scale) => new()
+	// A frame with an aspect gives the components a size to draw at.
+	private static UiRepeat<string> Fitted(MixerModel model) => new()
 	{
 		Key = "fr",
 		// Rebuilt when the device changes shape; values inside follow their states.
@@ -156,16 +155,12 @@ internal static class MixerView
 		Template = (_, _) =>
 		{
 			var device = model.Device.Peek();
-			var aspect = (double)device.Columns / device.Rows;
-			var height = Math.Min(PreviewHeight, PreviewMaxWidth / aspect);
-			var s = scale > 0 ? scale : height;
+			const double s = 1;
 			return new UiModifier
 			{
 				Key = "f",
 				Fill = true,
-				Frame = scale > 0
-					? new UiFrame { AspectRatio = aspect }
-					: new UiFrame { AspectRatio = aspect, Height = UiLength.OfBasis(height) },
+				Frame = new UiFrame { AspectRatio = (double)device.Columns / device.Rows },
 				Radius = B(s, KeyRadius * 1.5),
 				BorderWidth = B(s, 0.003),
 				BorderColor = PanelEdge,
@@ -317,7 +312,7 @@ internal static class MixerView
 		else
 		{
 			var level = model.Level(element);
-			var cap = Math.Clamp(CapLength / (vertical ? element.Height : element.Width), 0.12, 0.36);
+			var cap = (int)Math.Round(Math.Clamp(CapLength / (vertical ? element.Height : element.Width), 0.1, MaxCap) * Steps);
 			var readout = new UiTextRun
 			{
 				Key = "val",
@@ -334,7 +329,7 @@ internal static class MixerView
 				Fill = true,
 				Children =
 				[
-					Track(model, vertical, cap, s),
+					Track(model, vertical, s),
 					LevelFill(element, vertical, cap, level, s),
 					Cap(model, vertical, cap, level),
 					Input(model, element, vertical, level),
@@ -367,76 +362,88 @@ internal static class MixerView
 		};
 	}
 
-	// The fader is three layers along its length, each a stack of fractions of it: the cap's centre travels from cap/2
-	// to 1 - cap/2, and the track image is placed so its first and last ticks sit at those two points.
-	private static UiStack Along(bool vertical, string key, IReadOnlyList<UiElement> children, UiValue<string>? align = null) => new()
+	// The track image fills the fader; its end ticks sit at TrackMargin from either end.
+	private static UiElement Track(MixerModel model, bool vertical, double s) =>
+		model.Art is { } art
+			? new UiButton { Key = "tr", Fill = true, Background = Transparent, Source = vertical ? art.TrackVertical : art.TrackHorizontal, Fit = UiComponentImageFits.Contain }
+			: new UiStack
+			{
+				Key = "tr",
+				Fill = true,
+				Direction = vertical ? UiComponentDirections.Horizontal : UiComponentDirections.Vertical,
+				Justify = UiComponentJustify.Center,
+				Children = [Slot("trs", SlotColor, vertical, s)],
+			};
+
+	// Where the cap's centre is, in steps from the top (vertical) or the left (horizontal) end.
+	private static int Centre(bool vertical, double level)
+	{
+		var along = vertical ? 1 - level : level;
+		return (int)Math.Round((TrackMargin + (along * (1 - (2 * TrackMargin)))) * Steps);
+	}
+
+	// A one-column (one-row) grid of Steps cells along the fader: spans place things at a fraction of its length.
+	private static UiGrid Steps1D(bool vertical, string key, IReadOnlyList<UiElement> children) => new()
 	{
 		Key = key,
 		Fill = true,
-		Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-		Align = align ?? UiComponentAlignments.Stretch,
+		Columns = vertical ? 1 : Steps,
+		Rows = vertical ? Steps : 1,
+		Gap = UiSize.FromBasis(0),
 		Children = children,
 	};
 
-	private static UiStack Gap(string key, Func<double> fraction) =>
-		new() { Key = key, MainSize = UiSize.From(() => UiLength.OfParent(Math.Max(0, fraction()))) };
+	private static UiStack Spacer(bool vertical, string key, Func<int> span) => vertical
+		? new UiStack { Key = key, RowSpan = UiValue.From(() => Math.Max(1, span())) }
+		: new UiStack { Key = key, ColumnSpan = UiValue.From(() => Math.Max(1, span())) };
 
-	private static UiStack Track(MixerModel model, bool vertical, double cap, double s)
+	// The slot lit in the element's color from the bottom (left) end tick to the cap's centre.
+	private static UiGrid LevelFill(DeviceElement element, bool vertical, int cap, UiState<double> level, double s)
 	{
-		var length = (1 - cap) / (1 - (2 * TrackMargin));
-		var before = (cap / 2) - (TrackMargin * length);
-		UiElement track = model.Art is { } art
-			? new UiButton
-			{
-				Key = "tr",
-				MainSize = UiSize.FromParent(length),
-				Background = Transparent,
-				Source = vertical ? art.TrackVertical : art.TrackHorizontal,
-				Fit = UiComponentImageFits.Contain,
-			}
-			: new UiModifier
-			{
-				Key = "trf",
-				MainSize = UiSize.FromParent(length),
-				Frame = vertical ? new UiFrame { Width = L(s, SlotWidth) } : new UiFrame { Height = L(s, SlotWidth) },
-				Child = new UiShape { Key = "tr", Shape = UiComponentShapes.Capsule, Color = SlotColor },
-			};
-
-		// Stretched across: the image is fitted into the full width, a plain slot keeps its own.
-		return Along(vertical, "tk", [Gap("tb", () => before), track], model.Art is null ? UiComponentAlignments.Center : UiComponentAlignments.Stretch);
-	}
-
-	// The slot lit in the element's color from the bottom (left) tick to the cap.
-	private static UiStack LevelFill(DeviceElement element, bool vertical, double cap, UiState<double> level, double s)
-	{
-		var fill = new UiModifier
+		var end = (int)Math.Round(TrackMargin * Steps);
+		Func<int> span = () => vertical ? Steps - end - Centre(true, level.Value) : Centre(false, level.Value) - end;
+		var fill = new UiStack
 		{
-			Key = "lvf",
-			MainSize = UiSize.From(() => UiLength.OfParent(level.Value * (1 - cap))),
-			Frame = vertical ? new UiFrame { Width = L(s, SlotWidth) } : new UiFrame { Height = L(s, SlotWidth) },
-			Opacity = 0.85,
-			Child = new UiShape { Key = "lv", Shape = UiComponentShapes.Rectangle, Color = element.Color ?? DefaultAccent },
+			Key = "lvc",
+			Direction = vertical ? UiComponentDirections.Horizontal : UiComponentDirections.Vertical,
+			Justify = UiComponentJustify.Center,
+			Children = [Slot("lv", element.Color ?? DefaultAccent, vertical, s) with { Opacity = UiValue.From(() => span() > 0 ? 0.85 : 0) }],
 		};
+		fill = vertical
+			? fill with { RowSpan = UiValue.From(() => Math.Max(1, span())) }
+			: fill with { ColumnSpan = UiValue.From(() => Math.Max(1, span())) };
 
 		return vertical
-			? Along(true, "lf", [Gap("lb", () => (cap / 2) + ((1 - level.Value) * (1 - cap))), fill], UiComponentAlignments.Center)
-			: Along(false, "lf", [Gap("lb", () => cap / 2), fill], UiComponentAlignments.Center);
+			? Steps1D(true, "lf", [Spacer(true, "lb", () => Centre(true, level.Value)), fill])
+			: Steps1D(false, "lf", [Spacer(false, "lb", () => end), fill]);
 	}
 
-	private static UiStack Cap(MixerModel model, bool vertical, double cap, UiState<double> level)
+	private static UiModifier Slot(string key, string color, bool vertical, double s) => new()
+	{
+		Key = key + "f",
+		Frame = vertical ? new UiFrame { Width = L(s, SlotWidth) } : new UiFrame { Height = L(s, SlotWidth) },
+		Child = new UiShape { Key = key, Shape = UiComponentShapes.Capsule, Color = color },
+	};
+
+	private static UiGrid Cap(MixerModel model, bool vertical, int cap, UiState<double> level)
 	{
 		UiElement face = model.Art is { } art
 			? new UiButton
 			{
 				Key = "ci",
-				MainSize = UiSize.FromParent(cap),
 				Background = Transparent,
 				Source = vertical ? art.CapVertical : art.CapHorizontal,
 				Fit = UiComponentImageFits.Contain,
 			}
-			: new UiShape { Key = "ci", MainSize = UiSize.FromParent(cap), Shape = UiComponentShapes.RoundedRectangle, Color = "#3A3C42" };
+			: new UiShape { Key = "ci", Shape = UiComponentShapes.RoundedRectangle, Color = "#3A3C42" };
+		face = face switch
+		{
+			UiButton button => vertical ? button with { RowSpan = cap } : button with { ColumnSpan = cap },
+			UiShape shape => vertical ? shape with { RowSpan = cap } : shape with { ColumnSpan = cap },
+			_ => face,
+		};
 
-		return Along(vertical, "cp", [Gap("cb", () => (vertical ? 1 - level.Value : level.Value) * (1 - cap)), face]);
+		return Steps1D(vertical, "cp", [Spacer(vertical, "cb", () => Centre(vertical, level.Value) - (cap / 2)), face]);
 	}
 
 	// On top and invisible (no track, no thumb): it takes the touches. Relative, so a touch doesn't jump the cap.
