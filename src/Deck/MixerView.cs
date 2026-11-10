@@ -3,6 +3,7 @@ using System.Globalization;
 using MacroDeck.Ui.Components;
 using MacroDeck.Ui.Dsl;
 using MacroDeck.Ui.Model.Resources;
+using MacroDeck.Ui.Model.Surfaces;
 using MacroDeck.Ui.Runtime;
 
 namespace MIDIRouter.Deck;
@@ -44,11 +45,16 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 }
 
 /// <summary>
-/// Draws the virtual device as a mixer: brushed metal with satin key caps and fader channels, each a slot with a scale
-/// and a fader cap. Cells are square; the drawing keeps the grid's aspect inside whatever it is given. The tree is kept
-/// flat and small: Macro Deck sends at most 32 levels and 192 KB, and a change to the device redraws the mixer in one
-/// patch of at most 64 KB.
+/// Draws the virtual device as a mixer: brushed metal with satin key caps and fader channels, each a slotted track with
+/// a scale and a fader cap. Cells are square; the drawing keeps the grid's aspect inside whatever it is given. The tree
+/// is kept flat and small: Macro Deck sends at most 32 levels and 192 KB, and a change to the device redraws the mixer
+/// in one patch of at most 64 KB.
 /// </summary>
+/// <remarks>
+/// Sizes are in basis units. A folder's basis is about the folder's height, so the numbers below are fractions of it;
+/// a config page's basis is a fixed 120 px, so the editor's preview is given a height in basis units and every size is
+/// scaled by it to keep the same proportions.
+/// </remarks>
 internal static class MixerView
 {
 	private const string Panel = "#2B2D32";
@@ -68,10 +74,18 @@ internal static class MixerView
 	private const double LabelSize = 0.032;
 	private const double SmallLabelSize = 0.026;
 	private const double LedHeight = 0.012;
-	private const double SlotWidth = 0.012;
+	private const double SlotWidth = 0.008;
+	private const double IconSize = 0.05;
 
-	// The cap's share of the slot: a fader two cells long has a cap about a fifth of it.
+	// The track image's scale runs from 40 px to 720 px of its 760: the share of its length before the first tick.
+	private const double TrackMargin = 40.0 / 760;
+
+	// The cap's share of the fader: a fader two cells long has a cap about a fifth of it.
 	private const double CapLength = 0.36;
+
+	// The editor's preview: this many basis units high (120 px each on a page), at most this many wide.
+	private const double PreviewHeight = 3.5;
+	private const double PreviewMaxWidth = 7.0;
 
 	private static readonly UiGradient PanelFace = UiGradient.Linear(
 		180,
@@ -105,16 +119,35 @@ internal static class MixerView
 					Justify = UiComponentJustify.Center,
 					Align = UiComponentAlignments.Center,
 					Padding = UiSize.FromBasis(0.02),
-					Children = [Fitted(model, fullWidth: false)],
+					Children = [Fitted(model, 1)],
 				},
 			],
 		};
 
-	/// <summary>The mixer as one block of a config page, as wide as the page.</summary>
-	public static UiElement Preview(MixerModel model) => Fitted(model, fullWidth: true);
+	/// <summary>The mixer as one block of a config page.</summary>
+	public static UiElement Preview(MixerModel model) => Fitted(model, 0);
 
-	// A frame with an aspect gives the components a size to draw at.
-	private static UiRepeat<string> Fitted(MixerModel model, bool fullWidth) => new()
+	/// <summary>
+	/// The larger of the editor's and the mixer's drawing of <paramref name="device"/>, in bytes as Macro Deck receives
+	/// it: a change to the device is sent as one patch of either.
+	/// </summary>
+	public static int Size(DeviceActions actions, MixerArt? art, VirtualDevice device)
+	{
+		var editor = new MixerModel(actions, art) { CellPressed = (_, _, _) => { } };
+		var live = new MixerModel(actions, art);
+		editor.Device.Set(device);
+		live.Device.Set(device);
+		var surface = new UiSurface { Kind = UiSurfaceKinds.Page, SessionMode = UiSessionModes.Exclusive };
+		using var editorView = new UiView(surface, new UiFragment { Key = "size", Children = [Preview(editor)] });
+		using var liveView = new UiView(surface, new UiFragment { Key = "size", Children = [Folder(live)] });
+		return Math.Max(
+			MacroDeck.Ui.Model.Serialization.UiCanonicalJson.SerializeToUtf8Bytes(editorView.Tree).Length,
+			MacroDeck.Ui.Model.Serialization.UiCanonicalJson.SerializeToUtf8Bytes(liveView.Tree).Length);
+	}
+
+	// A frame with an aspect gives the components a size to draw at. scale is 0 for the editor's preview: its height
+	// then sets the scale.
+	private static UiRepeat<string> Fitted(MixerModel model, double scale) => new()
 	{
 		Key = "fr",
 		// Rebuilt when the device changes shape; values inside follow their states.
@@ -124,25 +157,23 @@ internal static class MixerView
 		{
 			var device = model.Device.Peek();
 			var aspect = (double)device.Columns / device.Rows;
+			var height = Math.Min(PreviewHeight, PreviewMaxWidth / aspect);
+			var s = scale > 0 ? scale : height;
 			return new UiModifier
 			{
 				Key = "f",
 				Fill = true,
-				Frame = fullWidth
-					? new UiFrame { AspectRatio = aspect, Width = UiLength.OfParent(1) }
-					: new UiFrame { AspectRatio = aspect },
-				Radius = UiSize.FromBasis(KeyRadius * 1.5),
-				BorderWidth = UiSize.FromBasis(0.003),
+				Frame = scale > 0
+					? new UiFrame { AspectRatio = aspect }
+					: new UiFrame { AspectRatio = aspect, Height = UiLength.OfBasis(height) },
+				Radius = B(s, KeyRadius * 1.5),
+				BorderWidth = B(s, 0.003),
 				BorderColor = PanelEdge,
 				Clip = UiComponentClips.Bounds,
 				Child = new UiLayer
 				{
 					Key = "p",
-					Children =
-					[
-						Background(model, "bg"),
-						Grid(model, device),
-					],
+					Children = [Background(model, "bg"), Grid(model, device, s)],
 				},
 			};
 		},
@@ -154,7 +185,7 @@ internal static class MixerView
 			? new UiButton { Key = key, Fill = true, Background = Panel, Source = art.Panel, Fit = UiComponentImageFits.Cover }
 			: new UiModifier { Key = key + "-style", Background = PanelFace, Child = new UiStack { Key = key, Fill = true } };
 
-	private static UiGrid Grid(MixerModel model, VirtualDevice device)
+	private static UiGrid Grid(MixerModel model, VirtualDevice device, double s)
 	{
 		var cells = new List<UiElement>();
 		var covered = new bool[device.Columns, device.Rows];
@@ -178,11 +209,11 @@ internal static class MixerView
 						}
 					}
 
-					cells.Add(element.IsSlider ? Slider(model, element) : Key(model, element, small: false));
+					cells.Add(element.IsSlider ? Slider(model, element, s) : Key(model, element, small: false, s));
 				}
 				else if (here.Count > 0)
 				{
-					cells.Add(SmallPair(model, x, y, here));
+					cells.Add(SmallPair(model, x, y, here, s));
 				}
 				else
 				{
@@ -197,26 +228,26 @@ internal static class MixerView
 			Fill = true,
 			Columns = device.Columns,
 			Rows = device.Rows,
-			Gap = UiSize.FromBasis(CellGap),
-			Padding = UiSize.FromBasis(PanelPadding),
+			Gap = B(s, CellGap),
+			Padding = B(s, PanelPadding),
 			Children = cells,
 		};
 	}
 
-	private static UiStack SmallPair(MixerModel model, int x, int y, IReadOnlyList<DeviceElement> smalls) => new()
+	private static UiStack SmallPair(MixerModel model, int x, int y, IReadOnlyList<DeviceElement> smalls, double s) => new()
 	{
 		Key = CellKey(x, y),
 		Direction = UiComponentDirections.Vertical,
-		Gap = UiSize.FromBasis(CellGap / 2),
+		Gap = B(s, CellGap / 2),
 		Children =
 		[
 			.. Enumerable.Range(0, 2).Select(slot => smalls.FirstOrDefault(small => small.Slot == slot) is { } small
-				? (UiElement)Key(model, small, small: true)
+				? (UiElement)Key(model, small, small: true, s)
 				: Empty(model, x, y, slot, CellKey(x, y) + (slot == 0 ? "-top" : "-bottom"))),
 		],
 	};
 
-	private static UiModifier Key(MixerModel model, DeviceElement element, bool small)
+	private static UiModifier Key(MixerModel model, DeviceElement element, bool small, double s)
 	{
 		var lit = model.LitState(element);
 		var accent = element.Color ?? DefaultAccent;
@@ -228,7 +259,7 @@ internal static class MixerView
 			Direction = UiComponentDirections.Vertical,
 			Justify = UiComponentJustify.SpaceBetween,
 			Align = UiComponentAlignments.Stretch,
-			Padding = UiSize.FromBasis(small ? 0.008 : 0.012),
+			Padding = B(s, small ? 0.008 : 0.012),
 			Background = Transparent,
 			Events = model.Editing
 				? [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(element.X, element.Y, element.Slot))]
@@ -244,67 +275,91 @@ internal static class MixerView
 				new UiModifier
 				{
 					Key = "led",
-					Frame = new UiFrame { Height = UiLength.OfBasis(LedHeight) },
+					Frame = new UiFrame { Height = L(s, LedHeight) },
 					Opacity = UiValue.From(() => lit.Value ? 1.0 : 0.45),
 					Child = new UiShape { Key = "led-shape", Shape = UiComponentShapes.Capsule, Color = accent },
 				},
-				Label(element.Label, small ? SmallLabelSize : LabelSize, Legend),
+				Label(element.Label, small ? SmallLabelSize : LabelSize, Legend, s),
 				new UiStack { Key = "spacer" },
 			],
 		};
 
-		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, element.Width, element.Height);
+		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, element.Width, element.Height, s);
 	}
 
-	// A fader channel: readout, the fader (slot, scale and cap under an invisible slider) and the label.
-	private static UiModifier Slider(MixerModel model, DeviceElement element)
+	// A fader channel: in the mixer the readout, the fader and the label; in the editor's small preview just an icon
+	// and the label.
+	private static UiModifier Slider(MixerModel model, DeviceElement element, double s)
 	{
 		var vertical = element.Kind == DeviceElementKind.VerticalSlider;
-		var level = model.Level(element);
-		var fader = new UiLayer
-		{
-			Key = "fd",
-			Fill = true,
-			Children =
-			[
-				Track(model, element, vertical),
-				Slot(vertical, "lv", element.Color ?? DefaultAccent, () => level.Value),
-				Cap(model, element, vertical, level),
-				model.Editing ? Select(model, element) : Input(model, element, vertical, level),
-			],
-		};
+		var direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal;
+		var label = Label(element.Label, SmallLabelSize, Legend, s);
 
-		var readout = new UiTextRun
+		UiElement channel;
+		if (model.Editing)
 		{
-			Key = "val",
-			Text = UiText.From(() => ((int)Math.Round(level.Value * 127)).ToString(CultureInfo.InvariantCulture)),
-			Size = UiSize.FromBasis(SmallLabelSize),
-			Weight = UiComponentTextWeights.Medium,
-			Color = MutedLegend,
-			Align = UiComponentAlignments.Center,
-			MaxLines = 1,
-		};
+			channel = new UiButton
+			{
+				Key = "ch",
+				Direction = UiComponentDirections.Vertical,
+				Justify = UiComponentJustify.Center,
+				Align = UiComponentAlignments.Center,
+				Gap = B(s, 0.008),
+				Background = Channel,
+				Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(element.X, element.Y, 0))],
+				Children =
+				[
+					new UiIcon { Key = "icon", Icon = vertical ? UiIcons.Sliders : UiIcons.AlignMiddle, Size = B(s, IconSize), Color = element.Color ?? MutedLegend },
+					label,
+				],
+			};
+		}
+		else
+		{
+			var level = model.Level(element);
+			var cap = Math.Clamp(CapLength / (vertical ? element.Height : element.Width), 0.12, 0.36);
+			var readout = new UiTextRun
+			{
+				Key = "val",
+				Text = UiText.From(() => ((int)Math.Round(level.Value * 127)).ToString(CultureInfo.InvariantCulture)),
+				Size = B(s, SmallLabelSize),
+				Weight = UiComponentTextWeights.Medium,
+				Color = MutedLegend,
+				Align = UiComponentAlignments.Center,
+				MaxLines = 1,
+			};
+			var fader = new UiLayer
+			{
+				Key = "fd",
+				Fill = true,
+				Children =
+				[
+					Track(model, vertical, cap, s),
+					LevelFill(element, vertical, cap, level, s),
+					Cap(model, vertical, cap, level),
+					Input(model, element, vertical, level),
+				],
+			};
 
-		var channel = new UiStack
-		{
-			Key = "ch",
-			Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-			Align = UiComponentAlignments.Center,
-			Gap = UiSize.FromBasis(0.008),
-			Padding = UiSize.FromBasis(0.012),
-			Background = Channel,
-			Children = vertical
-				? [readout, fader, Label(element.Label, SmallLabelSize, Legend)]
-				: [Label(element.Label, SmallLabelSize, Legend), fader, readout],
-		};
+			channel = new UiStack
+			{
+				Key = "ch",
+				Direction = direction,
+				Align = UiComponentAlignments.Center,
+				Gap = B(s, 0.008),
+				Padding = B(s, 0.012),
+				Background = Channel,
+				Children = vertical ? [readout, fader, label] : [label, fader, readout],
+			};
+		}
 
 		return new UiModifier
 		{
 			Key = element.Id,
 			ColumnSpan = element.Width,
 			RowSpan = element.Height,
-			Radius = UiSize.FromBasis(KeyRadius),
-			BorderWidth = UiSize.FromBasis(0.003),
+			Radius = B(s, KeyRadius),
+			BorderWidth = B(s, 0.003),
 			BorderColor = UiValue.From(() => model.Selected.Value == element.Id ? SelectedRim : Rim),
 			Clip = UiComponentClips.Bounds,
 			AccessibilityLabel = UiText.Of(element.Label),
@@ -312,84 +367,76 @@ internal static class MixerView
 		};
 	}
 
-	// In the editor a press anywhere on the fader selects the element.
-	private static UiButton Select(MixerModel model, DeviceElement element) => new()
-	{
-		Key = "sel",
-		Fill = true,
-		Background = Transparent,
-		Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(element.X, element.Y, 0))],
-	};
-
-	// The slot and its scale: one image, as a fader drawn from shapes takes a large share of what a UI tree may hold.
-	private static UiElement Track(MixerModel model, DeviceElement element, bool vertical) =>
-		model.Art is { } art
-			? new UiButton { Key = "tr", Fill = true, Background = Transparent, Source = vertical ? art.TrackVertical : art.TrackHorizontal, Fit = UiComponentImageFits.Contain }
-			: Slot(vertical, "tr", SlotColor, () => 1);
-
-	// The slot down the middle, and over it the same slot lit in the element's color up to the level: two flat layers
-	// rather than one nested inside the other, as a UI tree may only be so deep.
-	private static UiStack Slot(bool vertical, string key, string color, Func<double> fraction) => new()
+	// The fader is three layers along its length, each a stack of fractions of it: the cap's centre travels from cap/2
+	// to 1 - cap/2, and the track image is placed so its first and last ticks sit at those two points.
+	private static UiStack Along(bool vertical, string key, IReadOnlyList<UiElement> children, UiValue<string>? align = null) => new()
 	{
 		Key = key,
 		Fill = true,
 		Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-		Justify = vertical ? UiComponentJustify.End : UiComponentJustify.Start,
-		Align = UiComponentAlignments.Center,
-		Padding = UiSize.FromBasis(0.01),
-		Children =
-		[
-			new UiModifier
-			{
-				Key = key + "f",
-				Frame = UiValue.From(() => vertical
-					? new UiFrame { Width = UiLength.OfBasis(SlotWidth), Height = UiLength.OfParent(fraction()) }
-					: new UiFrame { Width = UiLength.OfParent(fraction()), Height = UiLength.OfBasis(SlotWidth) }),
-				Child = new UiShape { Key = key + "s", Shape = UiComponentShapes.Capsule, Color = color },
-			},
-		],
+		Align = align ?? UiComponentAlignments.Stretch,
+		Children = children,
 	};
 
-	// The cap sits at the level: a spacer before it takes the rest of the travel.
-	private static UiStack Cap(MixerModel model, DeviceElement element, bool vertical, UiState<double> level)
+	private static UiStack Gap(string key, Func<double> fraction) =>
+		new() { Key = key, MainSize = UiSize.From(() => UiLength.OfParent(Math.Max(0, fraction()))) };
+
+	private static UiStack Track(MixerModel model, bool vertical, double cap, double s)
 	{
-		var length = vertical ? element.Height : element.Width;
-		var cap = Math.Clamp(CapLength / length, 0.12, 0.36);
+		var length = (1 - cap) / (1 - (2 * TrackMargin));
+		var before = (cap / 2) - (TrackMargin * length);
+		UiElement track = model.Art is { } art
+			? new UiButton
+			{
+				Key = "tr",
+				MainSize = UiSize.FromParent(length),
+				Background = Transparent,
+				Source = vertical ? art.TrackVertical : art.TrackHorizontal,
+				Fit = UiComponentImageFits.Contain,
+			}
+			: new UiModifier
+			{
+				Key = "trf",
+				MainSize = UiSize.FromParent(length),
+				Frame = vertical ? new UiFrame { Width = L(s, SlotWidth) } : new UiFrame { Height = L(s, SlotWidth) },
+				Child = new UiShape { Key = "tr", Shape = UiComponentShapes.Capsule, Color = SlotColor },
+			};
+
+		// Stretched across: the image is fitted into the full width, a plain slot keeps its own.
+		return Along(vertical, "tk", [Gap("tb", () => before), track], model.Art is null ? UiComponentAlignments.Center : UiComponentAlignments.Stretch);
+	}
+
+	// The slot lit in the element's color from the bottom (left) tick to the cap.
+	private static UiStack LevelFill(DeviceElement element, bool vertical, double cap, UiState<double> level, double s)
+	{
+		var fill = new UiModifier
+		{
+			Key = "lvf",
+			MainSize = UiSize.From(() => UiLength.OfParent(level.Value * (1 - cap))),
+			Frame = vertical ? new UiFrame { Width = L(s, SlotWidth) } : new UiFrame { Height = L(s, SlotWidth) },
+			Opacity = 0.85,
+			Child = new UiShape { Key = "lv", Shape = UiComponentShapes.Rectangle, Color = element.Color ?? DefaultAccent },
+		};
+
+		return vertical
+			? Along(true, "lf", [Gap("lb", () => (cap / 2) + ((1 - level.Value) * (1 - cap))), fill], UiComponentAlignments.Center)
+			: Along(false, "lf", [Gap("lb", () => cap / 2), fill], UiComponentAlignments.Center);
+	}
+
+	private static UiStack Cap(MixerModel model, bool vertical, double cap, UiState<double> level)
+	{
 		UiElement face = model.Art is { } art
 			? new UiButton
 			{
 				Key = "ci",
+				MainSize = UiSize.FromParent(cap),
 				Background = Transparent,
 				Source = vertical ? art.CapVertical : art.CapHorizontal,
 				Fit = UiComponentImageFits.Contain,
 			}
-			: new UiShape { Key = "ci", Shape = UiComponentShapes.RoundedRectangle, CornerRadius = UiSize.FromBasis(0.006), Color = "#3A3C42" };
+			: new UiShape { Key = "ci", MainSize = UiSize.FromParent(cap), Shape = UiComponentShapes.RoundedRectangle, Color = "#3A3C42" };
 
-		return new UiStack
-		{
-			Key = "cp",
-			Fill = true,
-			Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-			Children =
-			[
-				new UiModifier
-				{
-					Key = "ct",
-					Frame = UiValue.From(() =>
-					{
-						var travel = UiLength.OfParent((vertical ? 1 - level.Value : level.Value) * (1 - cap));
-						return vertical ? new UiFrame { Height = travel } : new UiFrame { Width = travel };
-					}),
-					Child = new UiStack { Key = "cts" },
-				},
-				new UiModifier
-				{
-					Key = "cf",
-					Frame = vertical ? new UiFrame { Height = UiLength.OfParent(cap) } : new UiFrame { Width = UiLength.OfParent(cap) },
-					Child = face,
-				},
-			],
-		};
+		return Along(vertical, "cp", [Gap("cb", () => (vertical ? 1 - level.Value : level.Value) * (1 - cap)), face]);
 	}
 
 	// On top and invisible (no track, no thumb): it takes the touches. Relative, so a touch doesn't jump the cap.
@@ -403,13 +450,11 @@ internal static class MixerView
 		Interaction = UiComponentSliderInteractions.Relative,
 		LevelColor = Transparent,
 		Thickness = UiSize.FromBasis(0.0001),
-		Events = model.Editing
-			? []
-			:
-			[
-				UiEventHandler.OnAsync(UiComponentEvents.Adjust, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
-				UiEventHandler.OnAsync(UiComponentEvents.Change, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
-			],
+		Events =
+		[
+			UiEventHandler.OnAsync(UiComponentEvents.Adjust, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
+			UiEventHandler.OnAsync(UiComponentEvents.Change, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
+		],
 	};
 
 	private static async Task Slide(MixerModel model, DeviceElement element, UiState<double> level, UiEventData data, CancellationToken cancellationToken)
@@ -436,23 +481,12 @@ internal static class MixerView
 			}
 			: new UiStack { Key = key };
 
-	/// <summary>The size of the editor's drawing of <paramref name="device"/>, in bytes as Macro Deck receives it.</summary>
-	public static int Size(DeviceActions actions, MixerArt? art, VirtualDevice device)
-	{
-		var model = new MixerModel(actions, art) { CellPressed = (_, _, _) => { } };
-		model.Device.Set(device);
-		using var view = new UiView(
-			new MacroDeck.Ui.Model.Surfaces.UiSurface { Kind = MacroDeck.Ui.Model.Surfaces.UiSurfaceKinds.Page, SessionMode = MacroDeck.Ui.Model.Surfaces.UiSessionModes.Exclusive },
-			new UiFragment { Key = "size", Children = [Preview(model)] });
-		return MacroDeck.Ui.Model.Serialization.UiCanonicalJson.SerializeToUtf8Bytes(view.Tree).Length;
-	}
-
 	// Background and radius style the button itself, so the modifier emits no node: the grid spans go on the button.
-	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height) => new()
+	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height, double s) => new()
 	{
 		Key = key,
 		Background = UiBackgroundValue.From(() => lit() ? KeyFaceLit : KeyFace),
-		Radius = UiSize.FromBasis(KeyRadius),
+		Radius = B(s, KeyRadius),
 		AccessibilityLabel = UiText.Of(label),
 		Child = button with
 		{
@@ -463,16 +497,20 @@ internal static class MixerView
 		},
 	};
 
-	private static UiTextRun Label(string text, double size, string color) => new()
+	private static UiTextRun Label(string text, double size, string color, double s) => new()
 	{
 		Key = "label",
 		Text = UiText.Of(text),
-		Size = UiSize.FromBasis(size),
+		Size = B(s, size),
 		Weight = UiComponentTextWeights.SemiBold,
 		Color = color,
 		Align = UiComponentAlignments.Center,
 		MaxLines = 2,
 	};
+
+	private static UiSize B(double scale, double basis) => UiSize.FromBasis(basis * scale);
+
+	private static UiLength L(double scale, double basis) => UiLength.OfBasis(basis * scale);
 
 	private static string CellKey(int x, int y) => string.Create(CultureInfo.InvariantCulture, $"cell-{x}-{y}");
 }
