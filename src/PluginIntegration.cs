@@ -10,6 +10,7 @@ using MacroDeck.Sdk.Issues;
 using MacroDeck.Sdk.Profiles;
 using MacroDeck.Sdk.Ui;
 using MacroDeck.Sdk.Variables;
+using MacroDeck.Ui.Dsl;
 using MacroDeck.Ui.Model.Surfaces;
 using MacroDeck.Ui.Runtime;
 using MIDIRouter.Actions;
@@ -195,20 +196,34 @@ internal sealed class PluginIntegration :
 		[new UiSurfaceDeclaration { Kind = UiSurfaceKinds.Page, SessionMode = UiSessionModes.Exclusive }];
 
 	public IReadOnlyList<UiPageDeclaration> Pages { get; } =
-		[new UiPageDeclaration { Id = DeckEditorView.PageId, Title = Strings.Pages.Decks(), IconName = "layers" }];
+		[
+			new UiPageDeclaration { Id = DeckEditorView.PageId, Title = Strings.Pages.Decks(), IconName = "layers" },
+			new UiPageDeclaration { Id = DeckEditorView.CanvasPageId, Title = LocalizedText.FromLiteral("Decks canvas (spike)"), IconName = "layers" },
+		];
 
 	public Task<IUiSession?> CreateSessionAsync(UiSessionRequest request, CancellationToken cancellationToken)
 	{
-		if (!string.Equals(request.Surface.Kind, UiSurfaceKinds.Page, StringComparison.Ordinal)
-			|| !request.Surface.Attributes.TryGetValue(UiPageSurfaceAttributes.PageId, out var page)
-			|| page.ValueKind != JsonValueKind.String
-			|| !string.Equals(page.GetString(), DeckEditorView.PageId, StringComparison.Ordinal))
+		var pageId = string.Equals(request.Surface.Kind, UiSurfaceKinds.Page, StringComparison.Ordinal)
+			&& request.Surface.Attributes.TryGetValue(UiPageSurfaceAttributes.PageId, out var page)
+			&& page.ValueKind == JsonValueKind.String
+				? page.GetString()
+				: null;
+
+		var view = new DeckEditorView(_decks, _logger);
+		UiElement? root = pageId switch
 		{
+			DeckEditorView.PageId => view.Root(),
+			DeckEditorView.CanvasPageId => view.CanvasRoot(),
+			_ => null,
+		};
+
+		if (root is null)
+		{
+			view.Dispose();
 			return Task.FromResult<IUiSession?>(null);
 		}
 
-		var view = new DeckEditorView(_decks, _logger);
-		return Task.FromResult<IUiSession?>(new ViewSession(new UiView(request.Surface, view.Root()), view.Dispose));
+		return Task.FromResult<IUiSession?>(new ViewSession(new UiView(request.Surface, root), view.Dispose));
 	}
 
 	public IReadOnlyList<VirtualProfileDescriptor> GetProfiles() => _deckSurface.GetProfiles();
