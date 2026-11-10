@@ -134,6 +134,7 @@ internal sealed class PluginIntegration :
 
 		var enabled = await context.Storage.ReadAsync(EnabledStorageKey).ConfigureAwait(false);
 		await _device.LoadAsync(context.Storage).ConfigureAwait(false);
+		_mixerArt ??= await RegisterMixerArtAsync(context).ConfigureAwait(false);
 		var config = await ReadConfigAsync(context).ConfigureAwait(false);
 
 		// Opening devices can take some time
@@ -196,6 +197,7 @@ internal sealed class PluginIntegration :
 		Strings.FolderViews.Mixer.Description());
 
 	private string? _qualifiedMixerViewId;
+	private volatile MixerArt? _mixerArt;
 
 	public IReadOnlyList<FolderViewDescriptor> GetFolderViews() => [MixerFolderView];
 
@@ -219,7 +221,7 @@ internal sealed class PluginIntegration :
 		var surface = request.Surface;
 		if (surface.Kind == UiSurfaceKinds.Page && Attribute(surface, UiPageSurfaceAttributes.PageId) == DeviceEditorView.PageId)
 		{
-			var editor = new DeviceEditorView(_device, _deviceActions, _router);
+			var editor = new DeviceEditorView(_device, _deviceActions, _router, _mixerArt);
 			return Task.FromResult<IUiSession?>(new ViewSession(new UiView(surface, editor.Root()), editor.Dispose));
 		}
 
@@ -227,7 +229,7 @@ internal sealed class PluginIntegration :
 			&& Attribute(surface, UiFolderSurfaceAttributes.ViewId) is { } viewId
 			&& (viewId == MixerFolderView.Id || viewId == _qualifiedMixerViewId))
 		{
-			var mixer = new MixerModel(_deviceActions);
+			var mixer = new MixerModel(_deviceActions, _mixerArt);
 			mixer.Device.Set(_device.Device);
 			void OnChanged() => mixer.Device.Set(_device.Device);
 			void OnSlider(string variableId, int value)
@@ -373,6 +375,28 @@ internal sealed class PluginIntegration :
 	}
 
 	private void OnStateChanged() => ScheduleRefresh();
+
+	private async Task<MixerArt?> RegisterMixerArtAsync(IIntegrationContext context)
+	{
+		try
+		{
+			async Task<MacroDeck.Ui.Model.Resources.UiResource> Register(string file, string mediaType) =>
+				await context.UiResources.RegisterAsync(
+					"mixer-" + Path.GetFileNameWithoutExtension(file),
+					await File.ReadAllBytesAsync(Path.Combine(MixerArt.Folder, file)).ConfigureAwait(false),
+					mediaType).ConfigureAwait(false);
+
+			return new MixerArt(
+				await Register("brushed-metal.jpg", "image/jpeg").ConfigureAwait(false),
+				await Register("fader-cap-vertical.png", "image/png").ConfigureAwait(false),
+				await Register("fader-cap-horizontal.png", "image/png").ConfigureAwait(false));
+		}
+		catch (Exception ex) when (ex is UiResourceException or IOException or UnauthorizedAccessException)
+		{
+			_logger.Warning(ex, "Mixer images unavailable; the mixer draws plain shapes.");
+			return null;
+		}
+	}
 
 	private void OnDeviceChanged()
 	{

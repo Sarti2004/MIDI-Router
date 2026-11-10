@@ -34,12 +34,12 @@ internal sealed class DeviceEditorView : IDisposable
 	private readonly UiState<string> _mode = new(PlaceMode);
 	private readonly UiState<(LocalizedText Text, string Severity)> _status = new((Strings.Editor.Status.Hint(), "info"));
 
-	public DeviceEditorView(DeviceStore store, DeviceActions actions, MidiRouter router)
+	public DeviceEditorView(DeviceStore store, DeviceActions actions, MidiRouter router, MixerArt? art)
 	{
 		_store = store;
 		_actions = actions;
 		_router = router;
-		_mixer = new MixerModel(actions) { CellPressed = CellPressed };
+		_mixer = new MixerModel(actions, art) { CellPressed = CellPressed };
 		_mixer.Device.Set(store.Device);
 		_store.Changed += OnStoreChanged;
 	}
@@ -48,7 +48,7 @@ internal sealed class DeviceEditorView : IDisposable
 
 	public UiConfigStack Root() => new()
 	{
-		Key = "device",
+		Key = "d",
 		Children =
 		[
 			DeviceSettings(),
@@ -57,7 +57,7 @@ internal sealed class DeviceEditorView : IDisposable
 			// components a size to draw at.
 			new UiConfigStack
 			{
-				Key = "preview",
+				Key = "pv",
 				Direction = UiComponentDirections.Horizontal,
 				Gap = UiStackGaps.None,
 				Wrap = true,
