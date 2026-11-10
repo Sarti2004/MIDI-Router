@@ -51,8 +51,8 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 /// in one patch of at most 64 KB.
 /// </summary>
 /// <remarks>
-/// Sizes are in basis units, about the folder's height. Fractions of a parent don't size anything inside a grid cell,
-/// so the fader places its cap and level with row (or column) spans of a grid, which do.
+/// Sizes are in basis units, about the folder's height. Inside a grid cell, fractions of a parent size nothing and grid
+/// cells are always square, so the fader cap is an image offset within a full-size button.
 /// </remarks>
 internal static class MixerView
 {
@@ -79,13 +79,13 @@ internal static class MixerView
 	// The track image's scale runs from 12% to 88% of its length: the cap's centre travels between those ticks.
 	private const double TrackMargin = 0.12;
 
-	// The cap's share of the fader: a fader two cells long has a cap about a fifth of it. At most twice the margin,
-	// so the cap stays inside the fader at both ends.
-	private const double CapLength = 0.36;
-	private const double MaxCap = 2 * TrackMargin;
+	// The cap image is 1.8 times as wide as it is deep. Zoomed to CapWidth it spans that much of the fader's width;
+	// it stays within the end margins while its depth is at most 2 * TrackMargin of the fader's length, which a fader
+	// of n cells allows up to a zoom of CapFit * (n - ChannelExtras), its readout and label taking the rest.
+	private const double CapWidth = 0.9;
+	private const double CapFit = 2 * TrackMargin * 1.8;
+	private const double ChannelExtras = 0.4;
 
-	// The cap moves in steps of 1/Steps of the fader.
-	private const int Steps = 100;
 
 	private static readonly UiGradient PanelFace = UiGradient.Linear(
 		180,
@@ -312,7 +312,7 @@ internal static class MixerView
 		else
 		{
 			var level = model.Level(element);
-			var cap = (int)Math.Round(Math.Clamp(CapLength / (vertical ? element.Height : element.Width), 0.1, MaxCap) * Steps);
+			var length = vertical ? element.Height : element.Width;
 			var readout = new UiTextRun
 			{
 				Key = "val",
@@ -330,8 +330,7 @@ internal static class MixerView
 				Children =
 				[
 					Track(model, vertical, s),
-					LevelFill(element, vertical, cap, level, s),
-					Cap(model, vertical, cap, level),
+					.. Cap(model, vertical, length, level),
 					Input(model, element, vertical, level),
 				],
 			};
@@ -375,49 +374,6 @@ internal static class MixerView
 				Children = [Slot("trs", SlotColor, vertical, s)],
 			};
 
-	// Where the cap's centre is, in steps from the top (vertical) or the left (horizontal) end.
-	private static int Centre(bool vertical, double level)
-	{
-		var along = vertical ? 1 - level : level;
-		return (int)Math.Round((TrackMargin + (along * (1 - (2 * TrackMargin)))) * Steps);
-	}
-
-	// A one-column (one-row) grid of Steps cells along the fader: spans place things at a fraction of its length.
-	private static UiGrid Steps1D(bool vertical, string key, IReadOnlyList<UiElement> children) => new()
-	{
-		Key = key,
-		Fill = true,
-		Columns = vertical ? 1 : Steps,
-		Rows = vertical ? Steps : 1,
-		Gap = UiSize.FromBasis(0),
-		Children = children,
-	};
-
-	private static UiStack Spacer(bool vertical, string key, Func<int> span) => vertical
-		? new UiStack { Key = key, RowSpan = UiValue.From(() => Math.Max(1, span())) }
-		: new UiStack { Key = key, ColumnSpan = UiValue.From(() => Math.Max(1, span())) };
-
-	// The slot lit in the element's color from the bottom (left) end tick to the cap's centre.
-	private static UiGrid LevelFill(DeviceElement element, bool vertical, int cap, UiState<double> level, double s)
-	{
-		var end = (int)Math.Round(TrackMargin * Steps);
-		Func<int> span = () => vertical ? Steps - end - Centre(true, level.Value) : Centre(false, level.Value) - end;
-		var fill = new UiStack
-		{
-			Key = "lvc",
-			Direction = vertical ? UiComponentDirections.Horizontal : UiComponentDirections.Vertical,
-			Justify = UiComponentJustify.Center,
-			Children = [Slot("lv", element.Color ?? DefaultAccent, vertical, s) with { Opacity = UiValue.From(() => span() > 0 ? 0.85 : 0) }],
-		};
-		fill = vertical
-			? fill with { RowSpan = UiValue.From(() => Math.Max(1, span())) }
-			: fill with { ColumnSpan = UiValue.From(() => Math.Max(1, span())) };
-
-		return vertical
-			? Steps1D(true, "lf", [Spacer(true, "lb", () => Centre(true, level.Value)), fill])
-			: Steps1D(false, "lf", [Spacer(false, "lb", () => end), fill]);
-	}
-
 	private static UiModifier Slot(string key, string color, bool vertical, double s) => new()
 	{
 		Key = key + "f",
@@ -425,25 +381,29 @@ internal static class MixerView
 		Child = new UiShape { Key = key, Shape = UiComponentShapes.Capsule, Color = color },
 	};
 
-	private static UiGrid Cap(MixerModel model, bool vertical, int cap, UiState<double> level)
+	// The cap image covers the whole fader, fitted, then scaled down to a cap and moved so its centre sits on the
+	// level: an image's offset moves it by a share of its own box, the one placement that holds inside a grid cell.
+	// Its centre travels between the track's end ticks. Without the image, the slider's own thumb shows instead.
+	private static IEnumerable<UiElement> Cap(MixerModel model, bool vertical, int length, UiState<double> level)
 	{
-		UiElement face = model.Art is { } art
-			? new UiButton
-			{
-				Key = "ci",
-				Background = Transparent,
-				Source = vertical ? art.CapVertical : art.CapHorizontal,
-				Fit = UiComponentImageFits.Contain,
-			}
-			: new UiShape { Key = "ci", Shape = UiComponentShapes.RoundedRectangle, Color = "#3A3C42" };
-		face = face switch
+		if (model.Art is not { } art)
 		{
-			UiButton button => vertical ? button with { RowSpan = cap } : button with { ColumnSpan = cap },
-			UiShape shape => vertical ? shape with { RowSpan = cap } : shape with { ColumnSpan = cap },
-			_ => face,
-		};
+			yield break;
+		}
 
-		return Steps1D(vertical, "cp", [Spacer(vertical, "cb", () => Centre(vertical, level.Value) - (cap / 2)), face]);
+		// The cap fills most of the fader's width, but on a short fader it stays within the margins at the ends.
+		var zoom = Math.Min(CapWidth, CapFit * (length - ChannelExtras));
+		yield return new UiButton
+		{
+			Key = "ci",
+			Fill = true,
+			Background = Transparent,
+			Source = vertical ? art.CapVertical : art.CapHorizontal,
+			Fit = UiComponentImageFits.Contain,
+			Zoom = zoom,
+			OffsetX = vertical ? 0 : UiValue.From(() => TrackMargin + (level.Value * (1 - (2 * TrackMargin))) - 0.5),
+			OffsetY = vertical ? UiValue.From(() => TrackMargin + ((1 - level.Value) * (1 - (2 * TrackMargin))) - 0.5) : 0,
+		};
 	}
 
 	// On top and invisible (no track, no thumb): it takes the touches. Relative, so a touch doesn't jump the cap.
@@ -455,8 +415,8 @@ internal static class MixerView
 		Step = 1.0 / 127,
 		Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
 		Interaction = UiComponentSliderInteractions.Relative,
-		LevelColor = Transparent,
-		Thickness = UiSize.FromBasis(0.0001),
+		LevelColor = model.Art is null ? element.Color ?? DefaultAccent : Transparent,
+		Thickness = UiSize.FromBasis(model.Art is null ? 0.02 : 0.0001),
 		Events =
 		[
 			UiEventHandler.OnAsync(UiComponentEvents.Adjust, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
