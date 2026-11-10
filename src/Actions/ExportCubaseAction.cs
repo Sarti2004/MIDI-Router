@@ -1,4 +1,3 @@
-using System.Globalization;
 using MacroDeck.Localization;
 using MacroDeck.Sdk;
 using MacroDeck.Sdk.Actions;
@@ -8,11 +7,11 @@ using MIDIRouter.Routing;
 
 namespace MIDIRouter.Actions;
 
-internal sealed class ExportCubaseAction(MidiRouter router, DeckStore store, Func<INotificationService?> notifications) : IActionDefinition
+internal sealed class ExportCubaseAction(MidiRouter router, DeviceStore store, Func<INotificationService?> notifications) : IActionDefinition
 {
 	internal MidiRouter Router { get; } = router;
 
-	internal DeckStore Store { get; } = store;
+	internal DeviceStore Store { get; } = store;
 
 	internal Func<INotificationService?> Notifications { get; } = notifications;
 
@@ -40,28 +39,17 @@ internal sealed class ExportCubaseAction(MidiRouter router, DeckStore store, Fun
 				return ActionResult.Failed("no-output", noOutput);
 			}
 
-			var snapshot = action.Store.Snapshot;
-			if (snapshot.Errors.Count > 0)
+			if (action.Store.Device.Elements.Count == 0)
 			{
-				var first = snapshot.Errors[0];
-				await NotifyAsync(
-					Strings.Actions.ExportCubase.Skipped(Count(snapshot.Errors.Count)),
-					LocalizedText.FromLiteral($"{first.FileName}: {first.Message}"),
-					NotificationSeverity.Warning).ConfigureAwait(false);
-			}
-
-			if (snapshot.Decks.Count == 0)
-			{
-				var noDecks = Strings.Actions.ExportCubase.NoDecks();
-				await NotifyAsync(noDecks, Strings.Actions.ExportCubase.NoDecksDetail(DeckStore.Folder), NotificationSeverity.Warning)
-					.ConfigureAwait(false);
-				return ActionResult.Failed("no-decks", noDecks);
+				var empty = Strings.Actions.ExportCubase.NoElements();
+				await NotifyAsync(empty, Strings.Actions.ExportCubase.NoElementsDetail(), NotificationSeverity.Warning).ConfigureAwait(false);
+				return ActionResult.Failed("no-elements", empty);
 			}
 
 			DeckExportResult result;
 			try
 			{
-				result = await DeckExport.ExportAsync(snapshot.Decks, portName, context.CancellationToken).ConfigureAwait(false);
+				result = await DeckExport.ExportAsync(action.Store.Device, portName, context.CancellationToken).ConfigureAwait(false);
 			}
 			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 			{
@@ -70,16 +58,13 @@ internal sealed class ExportCubaseAction(MidiRouter router, DeckStore store, Fun
 				return ActionResult.Failed("write-failed", failed);
 			}
 
-			var count = Count(result.Decks);
 			await NotifyAsync(
-				result.FallbackFolder is { } folder ? Strings.Actions.ExportCubase.ExportedToFolder(count) : Strings.Actions.ExportCubase.Exported(count, result.Apps),
+				result.FallbackFolder is not null ? Strings.Actions.ExportCubase.ExportedToFolder() : Strings.Actions.ExportCubase.Exported(result.Apps),
 				result.FallbackFolder is { } fallback ? Strings.Actions.ExportCubase.ExportedToFolderDetail(fallback) : Strings.Actions.ExportCubase.ExportedDetail(),
 				NotificationSeverity.Success).ConfigureAwait(false);
 
 			return ActionResult.Success();
 		}
-
-		private static string Count(int count) => count.ToString(CultureInfo.InvariantCulture);
 
 		private async Task NotifyAsync(LocalizedText title, LocalizedText? message, NotificationSeverity severity)
 		{

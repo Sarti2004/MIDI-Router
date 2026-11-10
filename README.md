@@ -114,48 +114,33 @@ This is particularly useful on Windows, where many MIDI drivers allow only one a
 - Send MIDI CC
 - MIDI panic
 - Learn MIDI code
-- Export decks to Cubase
+- Export to Cubase
 
-## Decks and Cubase MIDI Remote (beta)
+## Virtual Device (beta)
 
-A deck is a Macro Deck profile of pads and faders that send MIDI through the router. The plugin can also export it as a Cubase / Nuendo MIDI Remote script, with the same layout and bindings, so Cubase shows the deck as a controller you can map in the Mapping Assistant.
+The Virtual Device is a mixer of buttons and faders on your Macro Deck that sends MIDI through the router. It can also be exported to Cubase / Nuendo as a MIDI Remote script with the same layout and MIDI, so Cubase shows it as a controller you can map in the Mapping Assistant.
 
-Build decks on the **Decks** tab of MIDI Router's page in Macro Deck: create a deck, press an empty cell to place a button, a small button (half a cell, two per cell) or a vertical or horizontal slider, then attach an action to it (Send MIDI note, Send MIDI CC or Send program change) and Save. Decks are read-only in Macro Deck's own editor.
+**Build it** on the **Virtual Device** tab of MIDI Router's page in Macro Deck:
 
-Each JSON file in the decks folder is one deck, and an example deck is created on first start. The folder is `~/Library/Application Support/MIDI Router/Decks` on macOS (in Finder: **Go → Go to Folder…**) and `Documents\MIDI Router\Decks` on Windows. The Decks tab writes these files, and they can also be edited by hand: saving a file updates the deck in Macro Deck right away.
+1. Choose an element: **Button**, **Small button** (half a cell, two per cell), **Vertical slider** or **Horizontal slider**.
+2. Press an empty cell to place it, or press an element to select it. **Move** moves the selected element to the next cell you press.
+3. Set the element's label, color and size, and its action: **Send MIDI note**, **Send MIDI CC** or **Send program change**, with that action's settings. A slider sends a CC, with its position as the value.
 
-```jsonc
-{
-  "name": "Example deck",
-  "columns": 5, "rows": 3,
-  "channel": 16,              // default for all controls; keep it away from your keyboard's channel
-  "controls": [
-    { "id": "pad1", "type": "button", "label": "Pad 1", "x": 0, "y": 0, "note": 36 },
-    { "id": "pad4", "type": "button", "label": "Pad 4", "x": 3, "y": 0, "cc": 20, "color": "#B71C1C" },
-    { "id": "rec", "type": "small", "label": "Rec", "x": 2, "y": 0, "slot": 0, "program": 3 },
-    { "id": "fader1", "type": "hslider", "label": "Fader 1", "x": 0, "y": 1, "w": 4, "cc": 21 },
-    { "id": "fader2", "type": "vslider", "label": "Fader 2", "x": 4, "y": 0, "h": 3, "cc": 22 }
-  ]
-}
-```
+Every change is saved at once.
 
-| Setting | Description |
-|---|---|
-| `type` | `button`, `small` (half a cell), `vslider` or `hslider`. Older files' `pad` and `fader` still load |
-| `x`, `y`, `w`, `h` | Grid cell and size (`w` and `h` default to 1; a small button has no size) |
-| `slot` | Small buttons only: `0` for the top half of the cell, `1` for the bottom |
-| `note` / `cc` / `program` | What a button sends: a note (on, then off), a CC (127, then 0) or a program change. A slider always sends a CC (0-127) |
-| `channel` | 1-16, overrides the deck's channel |
-| `color`, `label` | Color and the label shown in Macro Deck and Cubase |
+**Use it** on a deck: create a folder and set its view to **MIDI Router mixer**. Buttons run their action when pressed; sliders send their CC as they move.
 
-To use a deck in Cubase:
+Each slider also has a variable, `midi_router_<element>` (0-127), so other widgets and automations can show its position, or set it to move the slider and send the CC.
 
-1. Run the **Export decks to Cubase** action. It writes a script per deck to `Documents/Steinberg/<Cubase or Nuendo>/MIDI Remote/Driver Scripts/Local/MIDIRouter/`.
-   On macOS, Macro Deck asks for access to the Documents folder the first time.
-2. In Cubase, open the **MIDI Remote** tab and click **Reload Scripts**. The deck is detected on the router's output port.
-3. Map the controls in the Mapping Assistant. Export again after changing the deck.
+**Export it to Cubase**:
 
-Buttons send a short press only: a button can't be held. Program changes aren't exported to Cubase, which can't bind them in a MIDI Remote script. In the Macro Deck profile a small button takes its whole cell, and the bottom one of a pair is left out.
+1. Press **Export to Cubase** on the Virtual Device tab, or run the **Export to Cubase** action. The script is written to `Documents/Steinberg/<Cubase or Nuendo>/MIDI Remote/Driver Scripts/Local/MIDIRouter/virtual-device/`. On macOS, Macro Deck asks for access to the Documents folder the first time.
+2. In Cubase, open the **MIDI Remote** tab and click **Reload Scripts**. The device is detected on the router's output port.
+3. Map the controls in the Mapping Assistant. Export again after changing the device.
+
+Notes:
+- Give every element its own note or CC: the tab warns when two send the same, as Cubase would see them as one control. Keeping the device on its own channel (new elements use 16) keeps it apart from your keyboard.
+- Program changes aren't exported: a MIDI Remote script can't bind them.
 
 ## Subscription API for other plugins
 

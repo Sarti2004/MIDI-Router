@@ -7,7 +7,7 @@ using MacroDeck.Sdk.Actions;
 using MacroDeck.Sdk.ConfigFlow;
 using MacroDeck.Sdk.Events;
 using MacroDeck.Sdk.Issues;
-using MacroDeck.Sdk.Profiles;
+using MacroDeck.Sdk.FolderViews;
 using MacroDeck.Sdk.Ui;
 using MacroDeck.Sdk.Variables;
 using MacroDeck.Ui.Model.Surfaces;
@@ -27,7 +27,7 @@ internal sealed class PluginIntegration :
 	IVariableProvider,
 	IUiConfigFlowProvider,
 	IIntegrationIssueProvider,
-	IProfileProvider,
+	IFolderViewProvider,
 	IUiProvider,
 	IDisposable
 {
@@ -58,8 +58,10 @@ internal sealed class PluginIntegration :
 	private readonly PluginApi _pluginApi;
 	private readonly ClaimSink _sink;
 	private readonly IPluginCatalogNotifier _catalogNotifier;
-	private readonly DeckStore _decks;
-	private readonly DeckSurface _deckSurface;
+	private readonly DeviceStore _device;
+	private readonly DeviceActions _deviceActions;
+	private readonly Lock _sliderRefreshLock = new();
+	private readonly HashSet<string> _movedSliders = new(StringComparer.Ordinal);
 	private readonly ILogger _logger;
 	private readonly HashSet<string> _warnedOperators = new(StringComparer.Ordinal);
 	private readonly Lock _refreshLock = new();
@@ -76,8 +78,7 @@ internal sealed class PluginIntegration :
 		_logger = logger.ForContext<PluginIntegration>();
 		_pluginApi = new PluginApi(router, logger);
 		_sink = new ClaimSink(this);
-		_decks = new DeckStore(logger);
-		_deckSurface = new DeckSurface(_decks, router);
+		_device = new DeviceStore(logger);
 
 		Actions =
 		[
@@ -88,17 +89,15 @@ internal sealed class PluginIntegration :
 			new SendProgramChangeAction(router),
 			new PanicAction(router),
 			new LearnCodeAction(router, () => _context?.NotificationService),
-			new ExportCubaseAction(router, _decks, () => _context?.NotificationService),
+			new ExportCubaseAction(router, _device, () => _context?.NotificationService),
 		];
+		_deviceActions = new DeviceActions(Actions, logger);
 
 		_router.Modes.Changed += OnStateChanged;
 		_router.StatusChanged += OnStatusChanged;
 		_router.Learned += OnStateChanged;
-		_decks.Changed += OnDecksChanged;
-
-		// Early, as the host describes the virtual profiles and variables before initialization. Loading is in the
-		// background: the decks are announced when they arrive.
-		_decks.Start();
+		_device.Changed += OnDeviceChanged;
+		_deviceActions.SliderMoved += OnSliderMoved;
 	}
 
 	public IReadOnlyList<IActionDefinition> Actions { get; }
@@ -107,7 +106,7 @@ internal sealed class PluginIntegration :
 
 	public IReadOnlyList<EventDefinition> EventDefinitions => RouterEvents.Definitions;
 
-	// The router's own variables, then one writable variable per deck fader.
+	// The router's own variables, then one writable variable per slider of the virtual device.
 	public IReadOnlyList<VariableDefinition> Variables => _variables;
 
 	public IReadOnlyList<VariableDefinition> DeclaredVariables => Variables;
@@ -134,6 +133,7 @@ internal sealed class PluginIntegration :
 		context.Events.BindingsChanged += ApplyBindings;
 
 		var enabled = await context.Storage.ReadAsync(EnabledStorageKey).ConfigureAwait(false);
+		await _device.LoadAsync(context.Storage).ConfigureAwait(false);
 		var config = await ReadConfigAsync(context).ConfigureAwait(false);
 
 		// Opening devices can take some time
@@ -160,8 +160,7 @@ internal sealed class PluginIntegration :
 			config.InputDevices.Count,
 			config.OutputName.Length > 0 ? config.OutputName : "(none)",
 			_router.Modes.CurrentName);
-		_catalogNotifier.CatalogChanged("virtual-profiles", "provider", "Router initialized");
-		_ = NotifyFaderVariablesAsync(context);
+		_ = NotifyDeclarationsAsync(context);
 		_ = RefreshHostState(issuesChanged: true);
 	}
 
@@ -183,41 +182,76 @@ internal sealed class PluginIntegration :
 		_router.Modes.Changed -= OnStateChanged;
 		_router.StatusChanged -= OnStatusChanged;
 		_router.Learned -= OnStateChanged;
-		_decks.Changed -= OnDecksChanged;
-		_decks.Dispose();
+		_device.Changed -= OnDeviceChanged;
+		_deviceActions.SliderMoved -= OnSliderMoved;
 		_pluginApi.Dispose();
 		_lifetime?.Dispose();
 	}
 
 	public IConfigFlow CreateConfigFlow() => new RouterConfigFlow(_router);
 
+	private static FolderViewDescriptor MixerFolderView { get; } = new(
+		"mixer",
+		Strings.FolderViews.Mixer.Name(),
+		Strings.FolderViews.Mixer.Description());
+
+	private string? _qualifiedMixerViewId;
+
+	public IReadOnlyList<FolderViewDescriptor> GetFolderViews() => [MixerFolderView];
+
+	public async Task InitializeAsync(IFolderViewProviderContext context, CancellationToken cancellationToken = default)
+	{
+		var registration = await context.RegisterFolderViewAsync(MixerFolderView, cancellationToken).ConfigureAwait(false);
+		_qualifiedMixerViewId = registration.FolderViewId;
+	}
+
 	public IReadOnlyList<UiSurfaceDeclaration> Surfaces { get; } =
-		[new UiSurfaceDeclaration { Kind = UiSurfaceKinds.Page, SessionMode = UiSessionModes.Exclusive }];
+	[
+		new UiSurfaceDeclaration { Kind = UiSurfaceKinds.Page, SessionMode = UiSessionModes.Exclusive },
+		new UiSurfaceDeclaration { Kind = UiSurfaceKinds.Folder, SessionMode = UiSessionModes.Shared },
+	];
 
 	public IReadOnlyList<UiPageDeclaration> Pages { get; } =
-		[new UiPageDeclaration { Id = DeckEditorView.PageId, Title = Strings.Pages.Decks(), IconName = "layers" }];
+		[new UiPageDeclaration { Id = DeviceEditorView.PageId, Title = Strings.Pages.VirtualDevice(), IconName = "sliders" }];
 
 	public Task<IUiSession?> CreateSessionAsync(UiSessionRequest request, CancellationToken cancellationToken)
 	{
-		var pageId = string.Equals(request.Surface.Kind, UiSurfaceKinds.Page, StringComparison.Ordinal)
-			&& request.Surface.Attributes.TryGetValue(UiPageSurfaceAttributes.PageId, out var page)
-			&& page.ValueKind == JsonValueKind.String
-				? page.GetString()
-				: null;
-
-		if (!string.Equals(pageId, DeckEditorView.PageId, StringComparison.Ordinal))
+		var surface = request.Surface;
+		if (surface.Kind == UiSurfaceKinds.Page && Attribute(surface, UiPageSurfaceAttributes.PageId) == DeviceEditorView.PageId)
 		{
-			return Task.FromResult<IUiSession?>(null);
+			var editor = new DeviceEditorView(_device, _deviceActions, _router);
+			return Task.FromResult<IUiSession?>(new ViewSession(new UiView(surface, editor.Root()), editor.Dispose));
 		}
 
-		var view = new DeckEditorView(_decks, _router, _logger);
-		return Task.FromResult<IUiSession?>(new ViewSession(new UiView(request.Surface, view.Root()), view.Dispose));
+		if (surface.Kind == UiSurfaceKinds.Folder
+			&& Attribute(surface, UiFolderSurfaceAttributes.ViewId) is { } viewId
+			&& (viewId == MixerFolderView.Id || viewId == _qualifiedMixerViewId))
+		{
+			var mixer = new MixerModel(_deviceActions);
+			mixer.Device.Set(_device.Device);
+			void OnChanged() => mixer.Device.Set(_device.Device);
+			void OnSlider(string variableId, int value)
+			{
+				if (mixer.Levels.TryGetValue(variableId[DeviceActions.SliderPrefix.Length..], out var level))
+				{
+					level.Set(value / 127.0);
+				}
+			}
+
+			_device.Changed += OnChanged;
+			_deviceActions.SliderMoved += OnSlider;
+			return Task.FromResult<IUiSession?>(new ViewSession(new UiView(surface, MixerView.Folder(mixer)), () =>
+			{
+				_device.Changed -= OnChanged;
+				_deviceActions.SliderMoved -= OnSlider;
+			}));
+		}
+
+		return Task.FromResult<IUiSession?>(null);
 	}
 
-	public IReadOnlyList<VirtualProfileDescriptor> GetProfiles() => _deckSurface.GetProfiles();
-
-	public Task HandleWidgetInteractionAsync(string profileId, string folderId, string widgetId, WidgetInteraction interaction) =>
-		_deckSurface.PressAsync(folderId, widgetId, interaction);
+	private static string? Attribute(MacroDeck.Ui.Model.Surfaces.UiSurface surface, string name) =>
+		surface.Attributes.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
 	public Task<DynamicOptionsResult> GetEventOptionsAsync(EventOptionsContext context, CancellationToken cancellationToken)
 	{
@@ -252,9 +286,9 @@ internal sealed class PluginIntegration :
 
 	public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken = default)
 	{
-		if (DeckSurface.OwnsVariable(localId))
+		if (DeviceActions.OwnsVariable(localId))
 		{
-			return ValueTask.FromResult(_deckSurface.Read(localId));
+			return ValueTask.FromResult(_deviceActions.Read(_device.Device, localId));
 		}
 
 		var spec = VariableSpecs.FirstOrDefault(spec => string.Equals(spec.Id, localId, StringComparison.Ordinal));
@@ -262,7 +296,9 @@ internal sealed class PluginIntegration :
 	}
 
 	public ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default) =>
-		ValueTask.FromResult(DeckSurface.OwnsVariable(localId) ? _deckSurface.Write(localId, value) : VariableWriteResult.NotWritable());
+		DeviceActions.OwnsVariable(localId)
+			? _deviceActions.WriteAsync(_device.Device, localId, value, cancellationToken)
+			: ValueTask.FromResult(VariableWriteResult.NotWritable());
 
 	public Task<IReadOnlyList<IntegrationIssue>> GetIssuesAsync(CancellationToken cancellationToken = default)
 	{
@@ -338,18 +374,16 @@ internal sealed class PluginIntegration :
 
 	private void OnStateChanged() => ScheduleRefresh();
 
-	private void OnDecksChanged()
+	private void OnDeviceChanged()
 	{
-		_variables = [.. RouterVariables, .. _deckSurface.Variables()];
-		_catalogNotifier.CatalogChanged("virtual-profiles", "provider", "Decks changed");
-
+		_variables = [.. RouterVariables, .. DeviceActions.Variables(_device.Device)];
 		if (_context is { } context)
 		{
-			_ = NotifyFaderVariablesAsync(context);
+			_ = NotifyDeclarationsAsync(context);
 		}
 	}
 
-	private async Task NotifyFaderVariablesAsync(IIntegrationContext context)
+	private async Task NotifyDeclarationsAsync(IIntegrationContext context)
 	{
 		try
 		{
@@ -357,8 +391,43 @@ internal sealed class PluginIntegration :
 		}
 		catch (Exception ex)
 		{
-			_logger.Debug(ex, "The fader variables failed to update.");
+			_logger.Debug(ex, "The slider variables failed to update.");
 		}
+	}
+
+	// A slider moved: have the host read its variable again, once per burst of moves.
+	private void OnSliderMoved(string variableId, int value)
+	{
+		lock (_sliderRefreshLock)
+		{
+			if (!_movedSliders.Add(variableId) || _movedSliders.Count > 1)
+			{
+				return;
+			}
+		}
+
+		_ = Task.Run(async () =>
+		{
+			await Task.Delay(StateDebounce).ConfigureAwait(false);
+			string[] moved;
+			lock (_sliderRefreshLock)
+			{
+				moved = [.. _movedSliders];
+				_movedSliders.Clear();
+			}
+
+			if (_context is { } context)
+			{
+				try
+				{
+					await context.Variables.RequestDefinitionRefreshAsync(moved).ConfigureAwait(false);
+				}
+				catch (Exception ex)
+				{
+					_logger.Debug(ex, "The slider variables failed to refresh.");
+				}
+			}
+		});
 	}
 
 	private void OnStatusChanged()
