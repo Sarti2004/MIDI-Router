@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using MacroDeck.Localization;
 using MacroDeck.Ui.Components;
 using MacroDeck.Ui.Dsl;
 using MacroDeck.Ui.Model.Resources;
@@ -16,7 +17,8 @@ internal sealed record MixerArt(UiResource Panel)
 
 /// <summary>
 /// The state one mixer drawing reads: the device, and for the editor's preview the selection and what a press does.
-/// Without <see cref="CellPressed"/> it is the live mixer: buttons run their actions and sliders send their CCs.
+/// Without <see cref="CellPressed"/> it is the live mixer: switched on, buttons run their actions and sliders send their
+/// CCs on the device's ports, and the DAW's feedback lights the buttons' LEDs and moves the sliders.
 /// </summary>
 internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 {
@@ -33,20 +35,85 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 
 	public bool Editing => CellPressed is not null;
 
-	// Per element: pressed (lit) while held, and each slider's position as a 0-1 level.
+	/// <summary>Off, the live mixer is dark and its controls don't respond, as a switched-off device.</summary>
+	public UiState<DevicePortState> Power { get; } = new(DevicePortState.Off);
+
+	/// <summary>What the live mixer's power key does.</summary>
+	public Func<CancellationToken, Task>? PowerPressed { get; init; }
+
+	public UiState<bool> PowerHeld { get; } = new(false);
+
+	public ActivityLed MidiIn { get; } = new();
+
+	public ActivityLed MidiOut { get; } = new();
+
+	public bool Powered => Power.Value == DevicePortState.On;
+
+	// Per element: pressed (lit) while held, the button's LED as the DAW set it, and each slider's position as a 0-1 level.
 	public ConcurrentDictionary<string, UiState<bool>> Lit { get; } = new(StringComparer.Ordinal);
+
+	public ConcurrentDictionary<string, UiState<bool>> Leds { get; } = new(StringComparer.Ordinal);
 
 	public ConcurrentDictionary<string, UiState<double>> Levels { get; } = new(StringComparer.Ordinal);
 
 	public UiState<bool> LitState(DeviceElement element) => Lit.GetOrAdd(element.Id, _ => new UiState<bool>(false));
 
+	public UiState<bool> Led(DeviceElement element) => Leds.GetOrAdd(element.Id, _ => new UiState<bool>(Actions.Led(element)));
+
 	public UiState<double> Level(DeviceElement element) =>
 		Levels.GetOrAdd(element.Id, _ => new UiState<double>(Actions.SliderValue(element) / 127.0));
 }
 
+/// <summary>A MIDI activity LED: a message lights it for a moment, and a stream of them keeps it lit.</summary>
+internal sealed class ActivityLed
+{
+	private const long GlowMs = 70;
+
+	private long _offAt;
+	private int _lit;
+
+	public UiState<bool> Lit { get; } = new(false);
+
+	public void Pulse()
+	{
+		Volatile.Write(ref _offAt, Environment.TickCount64 + GlowMs);
+		if (Interlocked.Exchange(ref _lit, 1) == 0)
+		{
+			Lit.Set(true);
+			_ = GoOutAsync();
+		}
+	}
+
+	private async Task GoOutAsync()
+	{
+		while (true)
+		{
+			var wait = Volatile.Read(ref _offAt) - Environment.TickCount64;
+			if (wait > 0)
+			{
+				await Task.Delay(TimeSpan.FromMilliseconds(wait)).ConfigureAwait(false);
+				continue;
+			}
+
+			Lit.Set(false);
+			Volatile.Write(ref _lit, 0);
+
+			// A pulse between the two lines above saw it lit and left it to this loop.
+			if (Volatile.Read(ref _offAt) <= Environment.TickCount64 || Interlocked.Exchange(ref _lit, 1) != 0)
+			{
+				return;
+			}
+
+			Lit.Set(true);
+		}
+	}
+}
+
 /// <summary>
 /// Draws the virtual device as a mixer: brushed metal with satin key caps and fader channels around Macro Deck's own
-/// slider. Cells are square; the drawing keeps the grid's aspect inside whatever it is given. The tree
+/// slider. Across the top, as on studio hardware, a nameplate with MIDI in/out activity LEDs and the power key with its
+/// LED; switched off, the controls are dimmed and their LEDs and readouts dark. Cells are square; the drawing keeps the
+/// grid's aspect inside whatever it is given. The tree
 /// is kept flat and small: Macro Deck sends at most 32 levels and 192 KB, and a change to the device redraws the mixer
 /// in one patch of at most 64 KB.
 /// </summary>
@@ -65,6 +132,12 @@ internal static class MixerView
 	private const string Transparent = "#00000000";
 	private const string Channel = "#121315D9";
 	private const string DefaultAccent = "#5B8DEF";
+	private const string DarkLevel = "#3A3C42";
+	private const string PowerOnLed = "#46D369";
+	private const string PowerStartingLed = "#FFB547";
+	private const string PowerOffLed = "#5A2A2A";
+	private const string MidiInLed = "#46D369";
+	private const string MidiOutLed = "#FFB547";
 
 	private const double CellGap = 0.018;
 	private const double PanelPadding = 0.03;
@@ -78,6 +151,13 @@ internal static class MixerView
 
 	// The scale of the editor's preview, where a basis is one cell.
 	private const double PreviewScale = 4;
+
+	// The live mixer's grid is finer than the device's: a cell is Sub × Sub units, under a strip one unit high holding
+	// the nameplate and the power key. Only the grid's spans size things reliably inside it.
+	private const int Sub = 3;
+
+	// The share of the folder's height the panel's grid gets: the folder's and the panel's padding taken off.
+	private const double GridHeight = 1 - (2 * 0.02) - (2 * PanelPadding);
 
 
 	private static readonly UiGradient PanelFace = UiGradient.Linear(
@@ -203,7 +283,7 @@ internal static class MixerView
 			{
 				Key = "f",
 				Fill = true,
-				Frame = new UiFrame { AspectRatio = (double)device.Columns / device.Rows },
+				Frame = new UiFrame { AspectRatio = (double)(device.Columns * Sub) / ((device.Rows * Sub) + 1) },
 				Radius = B(s, KeyRadius * 1.5),
 				BorderWidth = B(s, 0.003),
 				BorderColor = PanelEdge,
@@ -217,15 +297,21 @@ internal static class MixerView
 		},
 	};
 
-	// Brushed metal when the image is there, a gradient when not.
-	private static UiElement Background(MixerModel model, string key) =>
+	// Brushed metal when the image is there, a gradient when not. Square: a button is otherwise rounded like a deck tile,
+	// and the panel's own frame rounds and clips its corners.
+	private static UiModifier Background(MixerModel model, string key) =>
 		model.Art is { } art
-			? new UiButton { Key = key, Fill = true, Background = Panel, Source = art.Panel, Fit = UiComponentImageFits.Cover }
+			? new UiModifier
+			{
+				Key = key + "-style",
+				Radius = UiSize.FromBasis(0),
+				Child = new UiButton { Key = key, Fill = true, Background = Panel, Source = art.Panel, Fit = UiComponentImageFits.Cover },
+			}
 			: new UiModifier { Key = key + "-style", Background = PanelFace, Child = new UiStack { Key = key, Fill = true } };
 
 	private static UiGrid Grid(MixerModel model, VirtualDevice device, double s)
 	{
-		var cells = new List<UiElement>();
+		var cells = new List<UiElement>(Header(model, device, s));
 		var covered = new bool[device.Columns, device.Rows];
 		for (var y = 0; y < device.Rows; y++)
 		{
@@ -248,16 +334,16 @@ internal static class MixerView
 					}
 
 					cells.Add(element.IsSlider
-						? Slider(model, element, s, element.Width, element.Height)
-						: Key(model, element, small: false, s, element.Width, element.Height));
+						? Slider(model, element, s, element.Width * Sub, element.Height * Sub)
+						: Key(model, element, small: false, s, element.Width * Sub, element.Height * Sub));
 				}
 				else if (here.Count > 0)
 				{
-					cells.Add(SmallPair(model, x, y, here, s));
+					cells.Add(SmallPair(model, x, y, here, s, Sub));
 				}
 				else
 				{
-					cells.Add(Empty(model, x, y, 0, CellKey(x, y)));
+					cells.Add(Empty(model, x, y, 0, CellKey(x, y), Sub));
 				}
 			}
 		}
@@ -266,17 +352,164 @@ internal static class MixerView
 		{
 			Key = "g",
 			Fill = true,
-			Columns = device.Columns,
-			Rows = device.Rows,
+			Columns = device.Columns * Sub,
+			Rows = (device.Rows * Sub) + 1,
 			Gap = B(s, CellGap),
 			Padding = B(s, PanelPadding),
 			Children = cells,
 		};
 	}
 
-	private static UiStack SmallPair(MixerModel model, int x, int y, IReadOnlyList<DeviceElement> smalls, double s) => new()
+	// The strip across the top: the nameplate, then the power key above the last column.
+	private static IEnumerable<UiElement> Header(MixerModel model, VirtualDevice device, double s)
+	{
+		// A grid unit in basis. The basis is the folder's shorter side, and either side may limit the panel: a landscape
+		// folder its height, a portrait one its width. The smaller of the two fits both.
+		var unit = GridHeight / Math.Max((device.Rows * Sub) + 1, device.Columns * Sub);
+		if (device.Columns > 1)
+		{
+			yield return Nameplate(model, device, (device.Columns - 1) * Sub, unit, s);
+		}
+
+		yield return PowerKey(model, Sub, unit, s);
+	}
+
+	// The device's name, silk-screened, and the MIDI activity LEDs: in for what the DAW sends, out for what the device sends.
+	// Spaced apart rather than pushed by a filling spacer, which takes the whole strip and shoves the LEDs out of it.
+	private static UiModifier Nameplate(MixerModel model, VirtualDevice device, int columns, double unit, double s)
+	{
+		var text = Math.Min(SmallLabelSize, unit * 0.5);
+		return new UiModifier
+		{
+			Key = "plate-style",
+			Radius = B(s, KeyRadius),
+			BorderWidth = B(s, 0.003),
+			BorderColor = PanelEdge,
+			Child = new UiStack
+			{
+				Key = "plate",
+				ColumnSpan = columns,
+				Direction = UiComponentDirections.Horizontal,
+				Justify = UiComponentJustify.SpaceBetween,
+				Align = UiComponentAlignments.Center,
+
+				// No room above and below the text in a strip one unit high: the padding is the inset at the ends.
+				Padding = B(s, unit * 0.15),
+				Background = Channel,
+				Children =
+				[
+					new UiTextRun
+					{
+						Key = "name",
+						Text = UiText.Of(device.Name.ToUpperInvariant()),
+						Size = B(s, text),
+						Weight = UiComponentTextWeights.SemiBold,
+						Color = Legend,
+						MaxLines = 1,
+					},
+					new UiStack
+					{
+						Key = "midi",
+						Direction = UiComponentDirections.Horizontal,
+						Align = UiComponentAlignments.Center,
+						Gap = B(s, unit * 0.3),
+						Children =
+						[
+							ActivityLight("in", Strings.Mixer.MidiIn(), model.MidiIn, MidiInLed, unit, text, s),
+							ActivityLight("out", Strings.Mixer.MidiOut(), model.MidiOut, MidiOutLed, unit, text, s),
+						],
+					},
+				],
+			},
+		};
+	}
+
+	private static UiStack ActivityLight(string key, LocalizedText label, ActivityLed led, string color, double unit, double text, double s) => new()
+	{
+		Key = key,
+		Direction = UiComponentDirections.Horizontal,
+		Align = UiComponentAlignments.Center,
+		Gap = B(s, unit * 0.1),
+		Children =
+		[
+			Lamp(UiValue.Of(color), UiValue.From(() => led.Lit.Value ? 1.0 : 0.18), unit, s),
+			new UiTextRun
+			{
+				Key = "label",
+				Text = label,
+				Size = B(s, text * 0.85),
+				Weight = UiComponentTextWeights.Medium,
+				Color = MutedLegend,
+				MaxLines = 1,
+			},
+		],
+	};
+
+	// A key with the power symbol and its LED: green on, amber while the ports come up, dull red off.
+	private static UiModifier PowerKey(MixerModel model, int columns, double unit, double s)
+	{
+		var button = new UiButton
+		{
+			Key = "power",
+			ColumnSpan = columns,
+			Direction = UiComponentDirections.Horizontal,
+			Justify = UiComponentJustify.Center,
+			Align = UiComponentAlignments.Center,
+			Gap = B(s, unit * 0.18),
+			Background = Transparent,
+			BorderStyle = UiComponentBorderStyles.Static,
+			BorderColor = Rim,
+			Events =
+			[
+				UiEventHandler.On(UiComponentEvents.PressStart, () => model.PowerHeld.Set(true)),
+				UiEventHandler.On(UiComponentEvents.PressEnd, () => model.PowerHeld.Set(false)),
+				UiEventHandler.OnAsync(UiComponentEvents.Press, cancellationToken => model.PowerPressed?.Invoke(cancellationToken) ?? Task.CompletedTask),
+			],
+			Children =
+			[
+				Lamp(
+					UiValue.From(() => model.Power.Value switch
+					{
+						DevicePortState.On => PowerOnLed,
+						DevicePortState.Starting => PowerStartingLed,
+						_ => PowerOffLed,
+					}),
+					UiValue.Of(1.0),
+					unit,
+					s),
+				new UiIcon
+				{
+					Key = "icon",
+					Icon = UiIcons.Power,
+					Size = B(s, Math.Min(IconSize, unit * 0.55)),
+					Color = UiValue.From(() => model.Powered ? Legend : MutedLegend),
+				},
+			],
+		};
+
+		return new UiModifier
+		{
+			Key = "power-style",
+			Background = UiBackgroundValue.From(() => model.PowerHeld.Value ? KeyFaceLit : KeyFace),
+			Radius = B(s, KeyRadius),
+			AccessibilityLabel = Strings.Mixer.Power(),
+			Child = button,
+		};
+	}
+
+	private static UiModifier Lamp(UiValue<string> color, UiValue<double> opacity, double unit, double s) => new()
+	{
+		Key = "lamp",
+		Frame = new UiFrame { Width = L(s, unit * 0.22), Height = L(s, unit * 0.22) },
+		Opacity = opacity,
+		Child = new UiShape { Key = "dot", Shape = UiComponentShapes.Circle, Color = color },
+	};
+
+	private static UiStack SmallPair(MixerModel model, int x, int y, IReadOnlyList<DeviceElement> smalls, double s, int span = 1) => new()
 	{
 		Key = CellKey(x, y),
+		ColumnSpan = span > 1 ? span : default,
+		RowSpan = span > 1 ? span : default,
 		Direction = UiComponentDirections.Vertical,
 		Gap = B(s, CellGap / 2),
 		Children =
@@ -290,6 +523,7 @@ internal static class MixerView
 	private static UiModifier Key(MixerModel model, DeviceElement element, bool small, double s, int columns, int rows)
 	{
 		var lit = model.LitState(element);
+		var led = model.Editing ? null : model.Led(element);
 		var accent = element.Color ?? DefaultAccent;
 
 		// A modifier adds no id of its own: what it wraps is keyed by the element.
@@ -305,18 +539,27 @@ internal static class MixerView
 				? [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(element.X, element.Y, element.Slot))]
 				:
 				[
-					UiEventHandler.On(UiComponentEvents.PressStart, () => lit.Set(true)),
-					UiEventHandler.On(UiComponentEvents.PressEnd, () => lit.Set(false)),
-					UiEventHandler.OnAsync(UiComponentEvents.Press, cancellationToken => model.Actions.PressAsync(element, cancellationToken)),
+					// As a hardware button: the message goes out when it goes down and is released when it comes up.
+					UiEventHandler.On(UiComponentEvents.PressStart, () =>
+					{
+						lit.Set(true);
+						model.Actions.Press(element);
+					}),
+					UiEventHandler.On(UiComponentEvents.PressEnd, () =>
+					{
+						lit.Set(false);
+						model.Actions.Release(element);
+					}),
 				],
 			Children =
 			[
-				// The LED strip: the element's color, bright while pressed.
+				// The LED strip in the element's color: bright while the DAW has it on, faint when not, dark while the
+				// device is off. The editor shows it at rest.
 				new UiModifier
 				{
 					Key = "led",
 					Frame = new UiFrame { Height = L(s, LedHeight) },
-					Opacity = UiValue.From(() => lit.Value ? 1.0 : 0.45),
+					Opacity = led is null ? 0.45 : UiValue.From(() => !model.Powered ? 0.08 : led.Value ? 1.0 : 0.22),
 					Child = new UiShape { Key = "led-shape", Shape = UiComponentShapes.Capsule, Color = accent },
 				},
 				Label(element.Label, small ? SmallLabelSize : LabelSize, Legend, s),
@@ -324,7 +567,21 @@ internal static class MixerView
 			],
 		};
 
-		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, columns, rows, model.Editing ? 0 : s);
+		// Backlit, as a pad on studio hardware: the whole key glows in the element's color while the DAW has it on.
+		var glow = Glow(accent);
+		return Styled(element.Id, element.Label, button, () => lit.Value, () => model.Selected.Value == element.Id, columns, rows, model.Editing ? 0 : s,
+			model.Editing ? null : () => !model.Powered,
+			led is null ? null : () => led.Value && model.Powered ? glow : null);
+	}
+
+	// The element's color, strong at the top and fading down, over the panel. A color with its own alpha is kept as is.
+	private static UiGradient Glow(string color)
+	{
+		var opaque = color.Length == 7 && color[0] == '#';
+		return UiGradient.Linear(
+			180,
+			new UiGradientStop { Offset = 0.00, Color = opaque ? color + "E6" : color },
+			new UiGradientStop { Offset = 1.00, Color = opaque ? color + "80" : color });
 	}
 
 	// A fader channel: in the mixer the readout, the fader and the label; in the editor's small preview just an icon
@@ -360,14 +617,20 @@ internal static class MixerView
 			var readout = new UiTextRun
 			{
 				Key = "val",
-				Text = UiText.From(() => ((int)Math.Round(level.Value * 127)).ToString(CultureInfo.InvariantCulture)),
+				Text = UiText.From(() => Readout(element, (int)Math.Round(level.Value * 127))),
 				Size = B(s, SmallLabelSize),
 				Weight = UiComponentTextWeights.Medium,
-				Color = MutedLegend,
+
+				// A dark display while the device is off.
+				Color = UiValue.From(() => model.Powered ? MutedLegend : Transparent),
 				Align = UiComponentAlignments.Center,
 				MaxLines = 1,
 			};
-			var fader = Fader(element, vertical, level, s, model);
+			UiElement fader = Fader(element, vertical, level, s, model);
+			if (element.Centered)
+			{
+				fader = new UiLayer { Key = "trk", Fill = true, Children = [CenterMark(vertical, s), fader] };
+			}
 
 			channel = new UiStack
 			{
@@ -391,11 +654,13 @@ internal static class MixerView
 			BorderColor = UiValue.From(() => model.Selected.Value == element.Id ? SelectedRim : Rim),
 			Clip = UiComponentClips.Bounds,
 			AccessibilityLabel = UiText.Of(element.Label),
+			Disabled = model.Editing ? default : UiValue.From(() => !model.Powered),
 			Child = channel,
 		};
 	}
 
-	// Macro Deck's own slider, in the element's color.
+	// Macro Deck's own slider, in the element's color. A centered one has no level bar, which would fill from one end:
+	// its knob over the center mark shows the position, as on a pan pot.
 	private static UiSlider Fader(DeviceElement element, bool vertical, UiState<double> level, double s, MixerModel model) => new()
 	{
 		Key = "fd",
@@ -403,28 +668,65 @@ internal static class MixerView
 		Level = UiValue.From(() => level.Value),
 		Step = 1.0 / 127,
 		Direction = vertical ? UiComponentDirections.Vertical : UiComponentDirections.Horizontal,
-		LevelColor = element.Color ?? DefaultAccent,
+
+		// As a fader cap: a touch takes it from where it is rather than jumping it to the finger.
+		Interaction = UiComponentSliderInteractions.Relative,
+		LevelColor = element.Centered ? Transparent : UiValue.From(() => model.Powered ? element.Color ?? DefaultAccent : DarkLevel),
 		Thickness = B(s, FaderThickness),
 		Events =
 		[
 			UiEventHandler.OnAsync(UiComponentEvents.Adjust, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
 			UiEventHandler.OnAsync(UiComponentEvents.Change, (data, cancellationToken) => Slide(model, element, level, data, cancellationToken)),
+			.. element.Centered
+				? [UiEventHandler.OnAsync(UiComponentEvents.DoublePress, cancellationToken => Move(model, element, level, DeviceActions.Center, cancellationToken))]
+				: Array.Empty<UiEventHandler>(),
 		],
 	};
 
-	private static async Task Slide(MixerModel model, DeviceElement element, UiState<double> level, UiEventData data, CancellationToken cancellationToken)
+	private static Task Slide(MixerModel model, DeviceElement element, UiState<double> level, UiEventData data, CancellationToken cancellationToken) =>
+		data.Raw is { ValueKind: System.Text.Json.JsonValueKind.Number } raw
+			? Move(model, element, level, (int)Math.Round(Math.Clamp(raw.GetDouble(), 0, 1) * 127), cancellationToken)
+			: Task.CompletedTask;
+
+	// The knob goes where the value is: to the center when a centered slider is moved near it.
+	private static Task Move(MixerModel model, DeviceElement element, UiState<double> level, int value, CancellationToken cancellationToken)
 	{
-		if (data.Raw is { ValueKind: System.Text.Json.JsonValueKind.Number } raw)
-		{
-			var value = Math.Clamp(raw.GetDouble(), 0, 1);
-			level.Set(value);
-			await model.Actions.SlideAsync(element, (int)Math.Round(value * 127), cancellationToken).ConfigureAwait(false);
-		}
+		value = DeviceActions.Snap(element, value);
+		level.Set(value / 127.0);
+		return model.Actions.SlideAsync(element, value, cancellationToken);
 	}
+
+	// A centered slider reads as a pan: L100 to C to R100, as Cubase shows it.
+	private static string Readout(DeviceElement element, int value) => !element.Centered
+		? value.ToString(CultureInfo.InvariantCulture)
+		: value == DeviceActions.Center ? "C"
+		: value < DeviceActions.Center
+			? string.Create(CultureInfo.InvariantCulture, $"L{Math.Round((DeviceActions.Center - value) * 100.0 / DeviceActions.Center)}")
+			: string.Create(CultureInfo.InvariantCulture, $"R{Math.Round((value - DeviceActions.Center) * 100.0 / (127 - DeviceActions.Center))}");
+
+	// A line across the track at its middle, behind the slider, longer than the track is thick so it shows either side.
+	private static UiStack CenterMark(bool vertical, double s) => new()
+	{
+		Key = "mark",
+		Fill = true,
+		Justify = UiComponentJustify.Center,
+		Align = UiComponentAlignments.Center,
+		Children =
+		[
+			new UiModifier
+			{
+				Key = "tick",
+				Frame = vertical
+					? new UiFrame { Width = L(s, FaderThickness * 2.6), Height = L(s, 0.004) }
+					: new UiFrame { Width = L(s, 0.004), Height = L(s, FaderThickness * 2.6) },
+				Child = new UiShape { Key = "line", Shape = UiComponentShapes.Rectangle, Color = MutedLegend },
+			},
+		],
+	};
 
 	// An empty cell or half: nothing in the live mixer, a faint place target in the editor. One node each, as an
 	// empty grid has many.
-	private static UiElement Empty(MixerModel model, int x, int y, int slot, string key) =>
+	private static UiElement Empty(MixerModel model, int x, int y, int slot, string key, int span = 1) =>
 		model.Editing
 			? new UiButton
 			{
@@ -434,16 +736,19 @@ internal static class MixerView
 				BorderColor = "#5A5D6466",
 				Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(x, y, slot))],
 			}
-			: new UiStack { Key = key };
+			: new UiStack { Key = key, ColumnSpan = span > 1 ? span : default, RowSpan = span > 1 ? span : default };
 
 	// Background and radius style the button itself, so the modifier emits no node: the grid spans go on the button.
 	// cornerScale 0 gives square corners.
-	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height, double cornerScale) => new()
+	// glow, when it gives one, is the face while the DAW has the key on; pressing still shows the pressed face.
+	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height, double cornerScale,
+		Func<bool>? disabled, Func<UiGradient?>? glow = null) => new()
 	{
 		Key = key,
-		Background = UiBackgroundValue.From(() => lit() ? KeyFaceLit : KeyFace),
+		Background = UiBackgroundValue.From(() => lit() ? KeyFaceLit : glow?.Invoke() ?? KeyFace),
 		Radius = B(cornerScale, KeyRadius),
 		AccessibilityLabel = UiText.Of(label),
+		Disabled = disabled is null ? default : UiValue.From(disabled),
 		Child = button with
 		{
 			ColumnSpan = width,

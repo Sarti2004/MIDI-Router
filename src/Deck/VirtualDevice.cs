@@ -34,6 +34,9 @@ internal sealed record DeviceElement(
 	[JsonIgnore]
 	public bool IsSlider => Kind is DeviceElementKind.VerticalSlider or DeviceElementKind.HorizontalSlider;
 
+	/// <summary>A slider that rests in the middle, as a pan control: it starts at 64, snaps there near it, and reads left and right.</summary>
+	public bool Centered { get; init; }
+
 	public bool Covers(int x, int y) => x >= X && x < X + Width && y >= Y && y < Y + Height;
 
 	public bool Overlaps(DeviceElement other) =>

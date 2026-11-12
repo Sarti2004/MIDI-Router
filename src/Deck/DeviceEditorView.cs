@@ -7,7 +7,6 @@ using MacroDeck.Ui.Config;
 using MacroDeck.Ui.Config.Options;
 using MacroDeck.Ui.Dsl;
 using MacroDeck.Ui.Runtime;
-using MIDIRouter.Routing;
 
 namespace MIDIRouter.Deck;
 
@@ -31,17 +30,15 @@ internal sealed class DeviceEditorView : IDisposable
 
 	private readonly DeviceStore _store;
 	private readonly DeviceActions _actions;
-	private readonly MidiRouter _router;
 	private readonly MixerModel _mixer;
 	private readonly UiState<DeviceElementKind> _placeKind = new(DeviceElementKind.Button);
 	private readonly UiState<string> _mode = new(PlaceMode);
 	private readonly UiState<(LocalizedText Text, string Severity)> _status = new((Strings.Editor.Status.Hint(), "info"));
 
-	public DeviceEditorView(DeviceStore store, DeviceActions actions, MidiRouter router, MixerArt? art)
+	public DeviceEditorView(DeviceStore store, DeviceActions actions, MixerArt? art)
 	{
 		_store = store;
 		_actions = actions;
-		_router = router;
 		_mixer = new MixerModel(actions, art) { CellPressed = CellPressed };
 		_mixer.Device.Set(store.Device);
 		_store.Changed += OnStoreChanged;
@@ -144,6 +141,18 @@ internal sealed class DeviceEditorView : IDisposable
 					Status(_mixer.Selected.Peek() is null ? Strings.Editor.Status.MoveHint() : Strings.Editor.Status.MoveTargetSelected(), "info");
 				})],
 			},
+
+			// Next to Move, so it is in reach without scrolling to the inspector. A config button can't be disabled: with
+			// nothing selected it is plain and says what to do.
+			new UiConfigButton
+			{
+				Key = "delete-element",
+				Label = Strings.Editor.Delete(),
+				Icon = UiIcons.Trash,
+				IconWithLabel = true,
+				Variant = UiValue.From(() => Selected() is null ? UiButtonVariants.Ghost : UiButtonVariants.Danger),
+				Events = [UiEventHandler.On(UiConfigEvents.Activate, DeleteSelected)],
+			},
 		],
 	};
 
@@ -200,6 +209,18 @@ internal sealed class DeviceEditorView : IDisposable
 			},
 			new UiWhen
 			{
+				Key = "centered-when",
+				Condition = () => Selected() is { IsSlider: true },
+				Content = () => new UiBooleanInput
+				{
+					Key = "centered",
+					Label = Strings.Editor.Centered.Label(),
+					Description = Strings.Editor.Centered.Description(),
+					Binding = Bind.Custom(() => Selected()?.Centered == true, centered => ChangeSelected(element => element with { Centered = centered })),
+				},
+			},
+			new UiWhen
+			{
 				Key = "slot-when",
 				Condition = () => Selected() is { Kind: DeviceElementKind.SmallButton },
 				Content = () => new UiChoiceInput
@@ -233,15 +254,6 @@ internal sealed class DeviceEditorView : IDisposable
 					Children = [.. action.Parameters.Select(parameter => Parameter(action, parameter))],
 				},
 			}),
-			new UiConfigButton
-			{
-				Key = "delete-element",
-				Label = Strings.Editor.DeleteElement(),
-				Icon = UiIcons.Trash,
-				IconWithLabel = true,
-				Variant = UiButtonVariants.Danger,
-				Events = [UiEventHandler.On(UiConfigEvents.Activate, DeleteSelected)],
-			},
 		],
 	};
 
@@ -470,25 +482,22 @@ internal sealed class DeviceEditorView : IDisposable
 
 	private void DeleteSelected()
 	{
-		if (Selected(_store.Device) is { } element)
+		if (Selected(_store.Device) is not { } element)
 		{
-			_store.Update(device => device.Without(element.Id));
-			_mixer.Selected.Set(null);
+			Status(Strings.Editor.Status.DeleteHint(), "info");
+			return;
 		}
+
+		_store.Update(device => device.Without(element.Id));
+		_mixer.Selected.Set(null);
+		Status(Strings.Editor.Status.Deleted(element.Label), "success");
 	}
 
 	private async Task ExportAsync()
 	{
-		var portName = _router.Config.OutputName;
-		if (portName.Length == 0)
-		{
-			Status(Strings.Editor.Status.ExportNoOutput(), "warning");
-			return;
-		}
-
 		try
 		{
-			var result = await DeckExport.ExportAsync(_store.Device, portName, CancellationToken.None).ConfigureAwait(false);
+			var result = await DeckExport.ExportAsync(_store.Device, CancellationToken.None).ConfigureAwait(false);
 			Status(result.FallbackFolder is { } folder
 				? Strings.Editor.Status.ExportedToFolder(folder)
 				: Strings.Editor.Status.Exported(result.Apps), "success");

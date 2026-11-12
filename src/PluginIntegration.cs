@@ -7,6 +7,7 @@ using MacroDeck.Sdk.Actions;
 using MacroDeck.Sdk.ConfigFlow;
 using MacroDeck.Sdk.Events;
 using MacroDeck.Sdk.Issues;
+using MacroDeck.Sdk.Notifications;
 using MacroDeck.Sdk.FolderViews;
 using MacroDeck.Sdk.Ui;
 using MacroDeck.Sdk.Variables;
@@ -32,9 +33,13 @@ internal sealed class PluginIntegration :
 	IDisposable
 {
 	private const string EnabledStorageKey = "routing-enabled";
+	private const string PowerStorageKey = "virtual-device-power";
 
 	private static readonly TimeSpan VariableFallbackRefresh = TimeSpan.FromSeconds(5);
 	private static readonly TimeSpan StateDebounce = TimeSpan.FromMilliseconds(30);
+
+	// Renaming the device while it is on moves its ports to the new name once typing pauses.
+	private static readonly TimeSpan RenameDelay = TimeSpan.FromSeconds(1.5);
 
 	private static readonly (string Name, string Id, VariableType Type, Func<MidiRouter, object?> Read)[] VariableSpecs =
 	[
@@ -59,6 +64,7 @@ internal sealed class PluginIntegration :
 	private readonly ClaimSink _sink;
 	private readonly IPluginCatalogNotifier _catalogNotifier;
 	private readonly DeviceStore _device;
+	private readonly DevicePort _port;
 	private readonly DeviceActions _deviceActions;
 	private readonly Lock _sliderRefreshLock = new();
 	private readonly HashSet<string> _movedSliders = new(StringComparer.Ordinal);
@@ -70,6 +76,7 @@ internal sealed class PluginIntegration :
 	private CancellationTokenSource? _lifetime;
 	private bool _refreshScheduled;
 	private volatile IReadOnlyList<VariableDefinition> _variables = RouterVariables;
+	private CancellationTokenSource? _rename;
 
 	public PluginIntegration(MidiRouter router, IPluginCatalogNotifier catalogNotifier, ILogger logger)
 	{
@@ -79,6 +86,7 @@ internal sealed class PluginIntegration :
 		_pluginApi = new PluginApi(router, logger);
 		_sink = new ClaimSink(this);
 		_device = new DeviceStore(logger);
+		_port = new DevicePort(logger);
 
 		Actions =
 		[
@@ -89,9 +97,9 @@ internal sealed class PluginIntegration :
 			new SendProgramChangeAction(router),
 			new PanicAction(router),
 			new LearnCodeAction(router, () => _context?.NotificationService),
-			new ExportCubaseAction(router, _device, () => _context?.NotificationService),
+			new ExportCubaseAction(_device, () => _context?.NotificationService),
 		];
-		_deviceActions = new DeviceActions(Actions, logger);
+		_deviceActions = new DeviceActions(Actions, _device, _port);
 
 		_router.Modes.Changed += OnStateChanged;
 		_router.StatusChanged += OnStatusChanged;
@@ -133,6 +141,7 @@ internal sealed class PluginIntegration :
 		context.Events.BindingsChanged += ApplyBindings;
 
 		var enabled = await context.Storage.ReadAsync(EnabledStorageKey).ConfigureAwait(false);
+		var power = await context.Storage.ReadAsync(PowerStorageKey).ConfigureAwait(false);
 		await _device.LoadAsync(context.Storage).ConfigureAwait(false);
 		_mixerArt ??= await RegisterMixerArtAsync(context).ConfigureAwait(false);
 		var config = await ReadConfigAsync(context).ConfigureAwait(false);
@@ -146,6 +155,12 @@ internal sealed class PluginIntegration :
 
 		ApplyBindings();
 		_router.Sink = _sink;
+
+		// On when Macro Deck last closed: the ports come back, as a device left switched on. Windows may take seconds.
+		if (bool.TryParse(power.Content, out var on) && on)
+		{
+			_ = SetPowerAsync(true);
+		}
 
 		try
 		{
@@ -175,7 +190,9 @@ internal sealed class PluginIntegration :
 		_router.Sink = null;
 		_lifetime?.Cancel();
 		_context = null;
-		return Task.CompletedTask;
+
+		// The ports go with the plugin; the stored power state brings them back on the next start.
+		return _port.SwitchOffAsync();
 	}
 
 	public void Dispose()
@@ -185,6 +202,8 @@ internal sealed class PluginIntegration :
 		_router.Learned -= OnStateChanged;
 		_device.Changed -= OnDeviceChanged;
 		_deviceActions.SliderMoved -= OnSliderMoved;
+		_rename?.Cancel();
+		_port.Dispose();
 		_pluginApi.Dispose();
 		_lifetime?.Dispose();
 	}
@@ -221,7 +240,7 @@ internal sealed class PluginIntegration :
 		var surface = request.Surface;
 		if (surface.Kind == UiSurfaceKinds.Page && Attribute(surface, UiPageSurfaceAttributes.PageId) == DeviceEditorView.PageId)
 		{
-			var editor = new DeviceEditorView(_device, _deviceActions, _router, _mixerArt);
+			var editor = new DeviceEditorView(_device, _deviceActions, _mixerArt);
 			return Task.FromResult<IUiSession?>(new ViewSession(new UiView(surface, editor.Root()), editor.Dispose));
 		}
 
@@ -229,9 +248,12 @@ internal sealed class PluginIntegration :
 			&& Attribute(surface, UiFolderSurfaceAttributes.ViewId) is { } viewId
 			&& (viewId == MixerFolderView.Id || viewId == _qualifiedMixerViewId))
 		{
-			var mixer = new MixerModel(_deviceActions, _mixerArt);
+			var mixer = new MixerModel(_deviceActions, _mixerArt) { PowerPressed = TogglePowerAsync };
 			mixer.Device.Set(_device.Device);
+			mixer.Power.Set(_port.State);
 			void OnChanged() => mixer.Device.Set(_device.Device);
+			void OnPower() => mixer.Power.Set(_port.State);
+			void OnActivity(bool input) => (input ? mixer.MidiIn : mixer.MidiOut).Pulse();
 			void OnSlider(string variableId, int value)
 			{
 				if (mixer.Levels.TryGetValue(variableId[DeviceActions.SliderPrefix.Length..], out var level))
@@ -240,12 +262,32 @@ internal sealed class PluginIntegration :
 				}
 			}
 
+			void OnLed(string elementId, bool lit)
+			{
+				if (mixer.Leds.TryGetValue(elementId, out var led))
+				{
+					led.Set(lit);
+				}
+			}
+
 			_device.Changed += OnChanged;
+			_port.StateChanged += OnPower;
+			_port.Activity += OnActivity;
 			_deviceActions.SliderMoved += OnSlider;
+			_deviceActions.LedChanged += OnLed;
 			return Task.FromResult<IUiSession?>(new ViewSession(new UiView(surface, MixerView.Folder(mixer)), () =>
 			{
+				// A deck that closes the folder mid-press never lets go: release what it holds, so no note hangs.
+				foreach (var element in _device.Device.Elements.Where(element => mixer.Lit.TryGetValue(element.Id, out var held) && held.Peek()))
+				{
+					_deviceActions.Release(element);
+				}
+
 				_device.Changed -= OnChanged;
+				_port.StateChanged -= OnPower;
+				_port.Activity -= OnActivity;
 				_deviceActions.SliderMoved -= OnSlider;
+				_deviceActions.LedChanged -= OnLed;
 			}));
 		}
 
@@ -353,6 +395,88 @@ internal sealed class PluginIntegration :
 	private Task SaveEnabledAsync(bool enabled) =>
 		_context?.Storage.WriteAsync(EnabledStorageKey, enabled.ToString(CultureInfo.InvariantCulture)) ?? Task.CompletedTask;
 
+	// The power key: on while off, off while on or still starting.
+	private Task TogglePowerAsync(CancellationToken cancellationToken) => SetPowerAsync(_port.State == DevicePortState.Off);
+
+	private async Task SetPowerAsync(bool on)
+	{
+		if (on)
+		{
+			var reserved = _router.Config.OutputName is { Length: > 0 } routerPort ? [routerPort] : Array.Empty<string>();
+			var result = await _port.SwitchOnAsync(_device.Device.Name, reserved).ConfigureAwait(false);
+			if (result.Failure != DevicePowerFailure.None)
+			{
+				await NotifyAsync(Strings.Device.PowerFailed(), result.Failure switch
+				{
+					DevicePowerFailure.Unsupported => OperatingSystem.IsWindows() ? Strings.Device.NoMidiServices() : Strings.Device.Unsupported(),
+					DevicePowerFailure.NameTaken => Strings.Device.NameTaken(_device.Device.Name),
+					_ => LocalizedText.FromLiteral(result.Error ?? string.Empty),
+				}).ConfigureAwait(false);
+			}
+		}
+		else
+		{
+			await _port.SwitchOffAsync().ConfigureAwait(false);
+		}
+
+		if (_context is { } context)
+		{
+			try
+			{
+				await context.Storage.WriteAsync(PowerStorageKey, (_port.State != DevicePortState.Off).ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
+			}
+			catch (Exception ex)
+			{
+				_logger.Warning(ex, "The virtual device's power state could not be saved.");
+			}
+		}
+	}
+
+	// Toasts are best effort.
+	private async Task NotifyAsync(LocalizedText title, LocalizedText message)
+	{
+		if (_context?.NotificationService is not { } notifications)
+		{
+			return;
+		}
+
+		try
+		{
+			await notifications.ShowAsync(new NotificationOptions { Title = title, Message = message, Severity = NotificationSeverity.Warning }).ConfigureAwait(false);
+		}
+		catch (NotificationException)
+		{
+		}
+	}
+
+	// A renamed device that is on moves its ports to the new name, as soon as typing pauses.
+	private void RenamePorts()
+	{
+		if (_port.State != DevicePortState.On || _port.Name == _device.Device.Name)
+		{
+			return;
+		}
+
+		var rename = new CancellationTokenSource();
+		Interlocked.Exchange(ref _rename, rename)?.Cancel();
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				await Task.Delay(RenameDelay, rename.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				return;
+			}
+
+			if (_port.State == DevicePortState.On && _port.Name != _device.Device.Name)
+			{
+				await SetPowerAsync(true).ConfigureAwait(false);
+			}
+		});
+	}
+
 	private void ApplyBindings()
 	{
 		if (_context is not { } context)
@@ -397,6 +521,7 @@ internal sealed class PluginIntegration :
 
 	private void OnDeviceChanged()
 	{
+		RenamePorts();
 		_variables = [.. RouterVariables, .. DeviceActions.Variables(_device.Device)];
 		if (_context is { } context)
 		{

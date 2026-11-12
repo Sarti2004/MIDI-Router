@@ -3,14 +3,11 @@ using MacroDeck.Sdk;
 using MacroDeck.Sdk.Actions;
 using MacroDeck.Sdk.Notifications;
 using MIDIRouter.Deck;
-using MIDIRouter.Routing;
 
 namespace MIDIRouter.Actions;
 
-internal sealed class ExportCubaseAction(MidiRouter router, DeviceStore store, Func<INotificationService?> notifications) : IActionDefinition
+internal sealed class ExportCubaseAction(DeviceStore store, Func<INotificationService?> notifications) : IActionDefinition
 {
-	internal MidiRouter Router { get; } = router;
-
 	internal DeviceStore Store { get; } = store;
 
 	internal Func<INotificationService?> Notifications { get; } = notifications;
@@ -31,14 +28,6 @@ internal sealed class ExportCubaseAction(MidiRouter router, DeviceStore store, F
 	{
 		public async Task<ActionResult> ExecuteAsync(ActionExecutionContext context)
 		{
-			var portName = action.Router.Config.OutputName;
-			if (portName.Length == 0)
-			{
-				var noOutput = Strings.Actions.ExportCubase.NoOutput();
-				await NotifyAsync(noOutput, null, NotificationSeverity.Warning).ConfigureAwait(false);
-				return ActionResult.Failed("no-output", noOutput);
-			}
-
 			if (action.Store.Device.Elements.Count == 0)
 			{
 				var empty = Strings.Actions.ExportCubase.NoElements();
@@ -49,7 +38,7 @@ internal sealed class ExportCubaseAction(MidiRouter router, DeviceStore store, F
 			DeckExportResult result;
 			try
 			{
-				result = await DeckExport.ExportAsync(action.Store.Device, portName, context.CancellationToken).ConfigureAwait(false);
+				result = await DeckExport.ExportAsync(action.Store.Device, context.CancellationToken).ConfigureAwait(false);
 			}
 			catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 			{

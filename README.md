@@ -118,25 +118,33 @@ This is particularly useful on Windows, where many MIDI drivers allow only one a
 
 ## Virtual Device (beta)
 
-The Virtual Device is a mixer of buttons and faders on your Macro Deck that sends MIDI through the router. It can also be exported to Cubase / Nuendo as a MIDI Remote script with the same layout and MIDI, so Cubase shows it as a controller you can map in the Mapping Assistant.
+The Virtual Device is a mixer of buttons and faders on your Macro Deck that works like a hardware controller: switched on, it has its own MIDI input and output named after it, which your DAW opens as it would a USB controller. It can also be exported to Cubase / Nuendo as a MIDI Remote script with the same layout and MIDI, so Cubase shows it as a controller you can map in the Mapping Assistant.
 
 **Build it** on the **Virtual Device** tab of MIDI Router's page in Macro Deck:
 
 1. Choose an element: **Button**, **Small button** (half a cell, two per cell), **Vertical slider** or **Horizontal slider**.
 2. Press an empty cell to place it, or press an element to select it. **Move** moves the selected element to the next cell you press.
-3. Set the element's label, color and size, and its action: **Send MIDI note**, **Send MIDI CC** or **Send program change**, with that action's settings. A slider sends a CC, with its position as the value.
+3. Set the element's label, color and size, and its action: **Send MIDI note**, **Send MIDI CC** or **Send program change**, with that action's settings. A slider sends a CC, with its position as the value. Tick **Centered (pan)** on a slider to make it a pan control: it rests in the middle (64), snaps there when moved near it, reads L100 to C to R100, and returns to the middle on a double-press.
 
 Every change is saved at once.
 
-**Use it** on a deck: create a folder and set its view to **MIDI Router mixer**. Buttons run their action when pressed; sliders send their CC as they move.
+**Use it** on a deck: create a folder and set its view to **MIDI Router mixer**, and press the power key at its top right.
 
-Each slider also has a variable, `midi_router_<element>` (0-127), so other widgets and automations can show its position, or set it to move the slider and send the CC.
+- **On** (green LED): the device's MIDI ports exist. Buttons work like hardware buttons: a note button sends its note on when pressed and its note off when let go (the note's duration setting isn't used), and a CC button sends its value when pressed and 0 when let go. Sliders send their CC as they move and take a touch from where they are, like a fader cap, rather than jumping to the finger. All of it goes out on the device's own output. What the DAW sends back to its input lights the button LEDs sending that note or CC (a program change lights the button for that program) and moves the sliders sending that CC, so the mixer shows the DAW's state. The **IN** and **OUT** LEDs on the nameplate flash with MIDI traffic.
+- **Off** (red LED): the ports are gone and the controls are dark and don't respond.
+
+The device stays on across Macro Deck restarts. Its ports are created by CoreMIDI on macOS and by [Windows MIDI Services](https://aka.ms/midi) on Windows, as a loopback pair: the DAW opens the port named after the device; the one starting with `Router:` is the plugin's side. Without Windows MIDI Services the device can't be switched on. Its name must differ from the router's own virtual port.
+
+Each slider also has a variable, `midi_router_<element>` (0-127), so other widgets and automations can show its position, or set it to move the slider and send the CC while the device is on.
 
 **Export it to Cubase**:
 
 1. Press **Export to Cubase** on the Virtual Device tab, or run the **Export to Cubase** action. The script is written to `Documents/Steinberg/<Cubase or Nuendo>/MIDI Remote/Driver Scripts/Local/MIDIRouter/virtual-device/`. On macOS, Macro Deck asks for access to the Documents folder the first time.
-2. In Cubase, open the **MIDI Remote** tab and click **Reload Scripts**. The device is detected on the router's output port.
+2. Switch the device on. In Cubase, open the **MIDI Remote** tab and click **Reload Scripts**. Cubase detects the device by its ports and sends each control's value back to it, so its LEDs and faders follow Cubase.
 3. Map the controls in the Mapping Assistant. Export again after changing the device.
+4. For the device to follow Cubase, set two options on the mappings in the Mapping Assistant:
+   - Faders: takeover mode **Jump**. The Mapping Assistant makes fader mappings **Scaled**, which suits faders that don't move by themselves, and then Cubase doesn't send their position back.
+   - Buttons for on/off functions such as mute, solo or record: **Toggle**. Otherwise a press turns the function on only while the note is held.
 
 Notes:
 - Give every element its own note or CC: the tab warns when two send the same, as Cubase would see them as one control. Keeping the device on its own channel (new elements use 16) keeps it apart from your keyboard.

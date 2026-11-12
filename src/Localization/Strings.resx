@@ -233,13 +233,10 @@
     <value>Exported to {apps}</value>
   </data>
   <data name="Actions.ExportCubase.ExportedDetail" xml:space="preserve">
-    <value>In the MIDI Remote tab, click Reload Scripts, then add the MIDIRouter controller.</value>
+    <value>Switch the Virtual Device on, then click Reload Scripts in the MIDI Remote tab: Cubase finds it by its MIDI ports. For the device to follow Cubase, set fader mappings to Jump and mute or solo buttons to Toggle in the Mapping Assistant.</value>
   </data>
   <data name="Actions.ExportCubase.ExportedToFolder" xml:space="preserve">
     <value>Exported, but no Cubase or Nuendo was found</value>
-  </data>
-  <data name="Actions.ExportCubase.NoOutput" xml:space="preserve">
-    <value>Choose the router's output port first</value>
   </data>
   <data name="Actions.ExportCubase.Failed" xml:space="preserve">
     <value>Export failed</value>
@@ -295,8 +292,14 @@
   <data name="Editor.Action" xml:space="preserve">
     <value>Action</value>
   </data>
-  <data name="Editor.DeleteElement" xml:space="preserve">
-    <value>Delete element</value>
+  <data name="Editor.Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Editor.Status.DeleteHint" xml:space="preserve">
+    <value>Select an element to delete it.</value>
+  </data>
+  <data name="Editor.Status.Deleted" xml:space="preserve">
+    <value>{element} deleted.</value>
   </data>
   <data name="Editor.Export" xml:space="preserve">
     <value>Export to Cubase</value>
@@ -314,13 +317,10 @@
     <value>Moved {label} to {position}.</value>
   </data>
   <data name="Editor.Status.Exported" xml:space="preserve">
-    <value>Exported to {apps}. In Cubase's MIDI Remote tab, click Reload Scripts.</value>
+    <value>Exported to {apps}. With the device switched on, click Reload Scripts in Cubase's MIDI Remote tab. In the Mapping Assistant, set faders to Jump and mute or solo buttons to Toggle, so the device follows Cubase.</value>
   </data>
   <data name="Editor.Status.ExportedToFolder" xml:space="preserve">
     <value>Exported to {folder}. No Cubase or Nuendo Driver Scripts folder was found: copy its Local folder into that folder.</value>
-  </data>
-  <data name="Editor.Status.ExportNoOutput" xml:space="preserve">
-    <value>Choose the router's output port first.</value>
   </data>
   <data name="Editor.Status.ExportFailed" xml:space="preserve">
     <value>Export failed: {error}</value>
@@ -332,7 +332,7 @@
     <value>MIDI Router mixer</value>
   </data>
   <data name="FolderViews.Mixer.Description" xml:space="preserve">
-    <value>The virtual device as a mixer: buttons and faders that send MIDI through the router.</value>
+    <value>The virtual device as a mixer, with a power key: switched on, it has its own MIDI ports, and its buttons and faders follow what the DAW sends back.</value>
   </data>
   <data name="Actions.ExportCubase.NoElements" xml:space="preserve">
     <value>The virtual device is empty</value>
@@ -501,5 +501,32 @@
   </data>
   <data name="Issues.InputIsRouterOutput.Description" xml:space="preserve">
     <value>Reading the router's output back would create a feedback loop, so this input is ignored. Remove it from the keyboards.</value>
+  </data>
+  <data name="Mixer.Power" xml:space="preserve">
+    <value>Power</value>
+  </data>
+  <data name="Mixer.MidiIn" xml:space="preserve">
+    <value>IN</value>
+  </data>
+  <data name="Mixer.MidiOut" xml:space="preserve">
+    <value>OUT</value>
+  </data>
+  <data name="Device.PowerFailed" xml:space="preserve">
+    <value>The Virtual Device couldn't switch on</value>
+  </data>
+  <data name="Device.NoMidiServices" xml:space="preserve">
+    <value>It needs Windows MIDI Services to create its MIDI ports, and this PC doesn't have it. Install Windows MIDI Services, then switch the device on again.</value>
+  </data>
+  <data name="Device.Unsupported" xml:space="preserve">
+    <value>This system can't create MIDI ports for it.</value>
+  </data>
+  <data name="Device.NameTaken" xml:space="preserve">
+    <value>{name} is the name of the router's own port. Give the Virtual Device another name on its page.</value>
+  </data>
+  <data name="Editor.Centered.Label" xml:space="preserve">
+    <value>Centered (pan)</value>
+  </data>
+  <data name="Editor.Centered.Description" xml:space="preserve">
+    <value>Rests in the middle and reads left and right, with a detent at the centre. Double-press it to centre it. For pan.</value>
   </data>
 </root>

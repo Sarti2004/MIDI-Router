@@ -14,7 +14,7 @@ internal static class DeckExport
 
 	/// <exception cref="IOException">A script could not be written.</exception>
 	/// <exception cref="UnauthorizedAccessException">A script could not be written.</exception>
-	public static async Task<DeckExportResult> ExportAsync(VirtualDevice device, string portName, CancellationToken cancellationToken)
+	public static async Task<DeckExportResult> ExportAsync(VirtualDevice device, CancellationToken cancellationToken)
 	{
 		var targets = CubaseScript.DriverScriptFolders();
 		var fallback = targets.Count == 0 ? FallbackFolder : null;
@@ -23,7 +23,7 @@ internal static class DeckExport
 			targets = [fallback];
 		}
 
-		var script = CubaseScript.Generate(device, portName);
+		var script = CubaseScript.Generate(device);
 		foreach (var target in targets)
 		{
 			var path = Path.Combine(target, CubaseScript.RelativePath());
