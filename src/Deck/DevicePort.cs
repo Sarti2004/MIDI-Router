@@ -13,7 +13,6 @@ internal enum DevicePortState
 {
 	Off,
 
-	// Windows MIDI Services adds the ports a moment after the loopback.
 	Starting,
 	On,
 }
@@ -22,10 +21,8 @@ internal enum DevicePowerFailure
 {
 	None,
 
-	// No Windows MIDI Services, or a system without virtual ports.
 	Unsupported,
 
-	// The router's own port has the name.
 	NameTaken,
 	Failed,
 }
@@ -35,15 +32,8 @@ internal readonly record struct DevicePowerResult(DevicePowerFailure Failure, st
 	public static DevicePowerResult Ok { get; } = new(DevicePowerFailure.None);
 }
 
-/// <summary>A message on the device's ports, channel 1-16. A note with value 0 is a note off.</summary>
 internal readonly record struct DeviceMessage(MidiMessageKind Kind, int Channel, int Number, int Value);
 
-/// <summary>
-/// The virtual device's own MIDI ports, as a hardware device has them: switched on, the DAW sees an input and an output
-/// under the device's name; switched off, both are gone. The device's controls send on it, and what the DAW sends back
-/// arrives at <see cref="Received"/>. On macOS these are CoreMIDI ports; on Windows a Windows MIDI Services loopback
-/// pair, the device holding one side ("Router: name") and the DAW the other.
-/// </summary>
 internal sealed class DevicePort(ILogger logger) : IDisposable
 {
 	private static readonly TimeSpan PortWait = TimeSpan.FromSeconds(10);
@@ -60,21 +50,16 @@ internal sealed class DevicePort(ILogger logger) : IDisposable
 
 	public event Action? StateChanged;
 
-	/// <summary>A message from the DAW.</summary>
 	public event Action<DeviceMessage>? Received;
 
-	/// <summary>MIDI went through: true for a message in, false for one out.</summary>
 	public event Action<bool>? Activity;
 
 	public DevicePortState State => _state;
 
-	/// <summary>The name the DAW sees while the device is on or starting.</summary>
 	public string? Name { get; private set; }
 
-	/// <param name="reserved">Port names the device can't take: the router's own.</param>
 	public async Task<DevicePowerResult> SwitchOnAsync(string name, IReadOnlyCollection<string> reserved)
 	{
-		// Not disposed: a switch-off may still cancel it after this returns.
 		var starting = new CancellationTokenSource();
 		await _switching.WaitAsync().ConfigureAwait(false);
 		try
@@ -149,7 +134,6 @@ internal sealed class DevicePort(ILogger logger) : IDisposable
 
 	public async Task SwitchOffAsync()
 	{
-		// A start still waiting for Windows to add the ports gives up first.
 		_starting?.Cancel();
 		await _switching.WaitAsync().ConfigureAwait(false);
 		try
@@ -194,7 +178,6 @@ internal sealed class DevicePort(ILogger logger) : IDisposable
 		}
 	}
 
-	// Dropped while off: a switched-off device sends nothing.
 	private void Send(DeviceMessage message)
 	{
 		lock (_sync)
@@ -225,13 +208,11 @@ internal sealed class DevicePort(ILogger logger) : IDisposable
 
 	private void OnReceived(DeviceMessage message)
 	{
-		// The first of each note, CC and program per switch-on: what the DAW sends back is the first question when a
-		// control doesn't follow it.
-		if (_heard.TryAdd((message.Kind, message.Channel, message.Number), true))
+		/* if (_heard.TryAdd((message.Kind, message.Channel, message.Number), true))
 		{
 			_logger.Information("From the DAW on \"{Name}\": {Kind} {Number} = {Value}, channel {Channel} (first since switch-on).",
 				Name, message.Kind, message.Number, message.Value, message.Channel);
-		}
+		} */
 
 		Activity?.Invoke(true);
 		Received?.Invoke(message);
@@ -331,7 +312,7 @@ internal sealed class DevicePort(ILogger logger) : IDisposable
 			_received = received;
 		}
 
-		/// <summary>Null without Windows MIDI Services.</summary>
+		// Null without Windows MIDI Services.
 		public static async Task<WindowsPorts?> OpenAsync(string name, Action<DeviceMessage> received, CancellationToken cancellationToken)
 		{
 			if (WindowsLoopback.TryCreate(name, MidiRouter.GetOutputNames(), pairOnly: true) is not { } loopback)
@@ -350,7 +331,7 @@ internal sealed class DevicePort(ILogger logger) : IDisposable
 				{
 					if (waited.Elapsed > PortWait)
 					{
-						throw new InvalidOperationException($"Windows MIDI Services did not add the ports of \"{name}\".");
+						throw new InvalidOperationException($"WMS cant create port \"{name}\".");
 					}
 
 					await Task.Delay(PortPoll, cancellationToken).ConfigureAwait(false);
@@ -414,7 +395,7 @@ internal sealed class DevicePort(ILogger logger) : IDisposable
 				}
 				catch (Exception)
 				{
-					// The driver's thread must not see the view's failures.
+					// The driver's thread must not see failures
 				}
 			}
 		}

@@ -9,17 +9,11 @@ using MacroDeck.Ui.Runtime;
 
 namespace MIDIRouter.Deck;
 
-/// <summary>The mixer's images, registered with Macro Deck at startup; without them it draws plain shapes.</summary>
 internal sealed record MixerArt(UiResource Panel)
 {
 	public static string Folder { get; } = Path.Combine(AppContext.BaseDirectory, "Assets", "Mixer");
 }
 
-/// <summary>
-/// The state one mixer drawing reads: the device, and for the editor's preview the selection and what a press does.
-/// Without <see cref="CellPressed"/> it is the live mixer: switched on, buttons run their actions and sliders send their
-/// CCs on the device's ports, and the DAW's feedback lights the buttons' LEDs and moves the sliders.
-/// </summary>
 internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 {
 	public DeviceActions Actions { get; } = actions;
@@ -30,15 +24,12 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 
 	public UiState<string?> Selected { get; } = new(null);
 
-	/// <summary>The editor's handler for a press on a cell: x, y and the half (0 top, 1 bottom).</summary>
 	public Action<int, int, int>? CellPressed { get; init; }
 
 	public bool Editing => CellPressed is not null;
 
-	/// <summary>Off, the live mixer is dark and its controls don't respond, as a switched-off device.</summary>
 	public UiState<DevicePortState> Power { get; } = new(DevicePortState.Off);
 
-	/// <summary>What the live mixer's power key does.</summary>
 	public Func<CancellationToken, Task>? PowerPressed { get; init; }
 
 	public UiState<bool> PowerHeld { get; } = new(false);
@@ -49,7 +40,6 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 
 	public bool Powered => Power.Value == DevicePortState.On;
 
-	// Per element: pressed (lit) while held, the button's LED as the DAW set it, and each slider's position as a 0-1 level.
 	public ConcurrentDictionary<string, UiState<bool>> Lit { get; } = new(StringComparer.Ordinal);
 
 	public ConcurrentDictionary<string, UiState<bool>> Leds { get; } = new(StringComparer.Ordinal);
@@ -64,7 +54,7 @@ internal sealed class MixerModel(DeviceActions actions, MixerArt? art)
 		Levels.GetOrAdd(element.Id, _ => new UiState<double>(Actions.SliderValue(element) / 127.0));
 }
 
-/// <summary>A MIDI activity LED: a message lights it for a moment, and a stream of them keeps it lit.</summary>
+// copy-paste not sure about it
 internal sealed class ActivityLed
 {
 	private const long GlowMs = 70;
@@ -98,7 +88,6 @@ internal sealed class ActivityLed
 			Lit.Set(false);
 			Volatile.Write(ref _lit, 0);
 
-			// A pulse between the two lines above saw it lit and left it to this loop.
 			if (Volatile.Read(ref _offAt) <= Environment.TickCount64 || Interlocked.Exchange(ref _lit, 1) != 0)
 			{
 				return;
@@ -109,18 +98,6 @@ internal sealed class ActivityLed
 	}
 }
 
-/// <summary>
-/// Draws the virtual device as a mixer: brushed metal with satin key caps and fader channels around Macro Deck's own
-/// slider. Across the top, as on studio hardware, a nameplate with MIDI in/out activity LEDs and the power key with its
-/// LED; switched off, the controls are dimmed and their LEDs and readouts dark. Cells are square; the drawing keeps the
-/// grid's aspect inside whatever it is given. The tree
-/// is kept flat and small: Macro Deck sends at most 32 levels and 192 KB, and a change to the device redraws the mixer
-/// in one patch of at most 64 KB.
-/// </summary>
-/// <remarks>
-/// Sizes are in basis units, about the folder's height. Inside a grid cell, fractions of a parent size nothing and grid
-/// cells are always square: only Fill and the grid's own spans size things reliably.
-/// </remarks>
 internal static class MixerView
 {
 	private const string Panel = "#2B2D32";
@@ -149,14 +126,13 @@ internal static class MixerView
 
 	private const double FaderThickness = 0.02;
 
-	// The scale of the editor's preview, where a basis is one cell.
 	private const double PreviewScale = 4;
 
 	// The live mixer's grid is finer than the device's: a cell is Sub × Sub units, under a strip one unit high holding
 	// the nameplate and the power key. Only the grid's spans size things reliably inside it.
 	private const int Sub = 3;
 
-	// The share of the folder's height the panel's grid gets: the folder's and the panel's padding taken off.
+	// The folder's height the panel's grid gets: the folder's and the panel's padding taken off.
 	private const double GridHeight = 1 - (2 * 0.02) - (2 * PanelPadding);
 
 
@@ -177,7 +153,6 @@ internal static class MixerView
 		new UiGradientStop { Offset = 0.50, Color = "#45474E" },
 		new UiGradientStop { Offset = 1.00, Color = "#2B2D32" });
 
-	/// <summary>The mixer filling a folder: centred on the panel, as large as the folder allows at the grid's aspect.</summary>
 	public static UiElement Folder(MixerModel model) =>
 		new UiLayer
 		{
@@ -197,11 +172,6 @@ internal static class MixerView
 			],
 		};
 
-	/// <summary>
-	/// The mixer on a config page, one block per cell. A component block on a page fits inside about 120 x 120 px
-	/// whatever its frame says, so a single block draws a whole device that small; a block per cell, side by side in a
-	/// row per grid row, gives every cell those 120 px. An element larger than a cell shows a piece in each cell.
-	/// </summary>
 	public static UiElement Preview(MixerModel model) => new UiRepeat<string>
 	{
 		Key = "fr",
@@ -211,8 +181,6 @@ internal static class MixerView
 		{
 			var device = model.Device.Peek();
 
-			// In a block a basis is one cell. Sizes are tuned for a folder with four rows, so four keeps a cell's label
-			// and icon at the same share of the cell.
 			const double s = PreviewScale;
 			return new MacroDeck.Ui.Config.UiConfigStack
 			{
@@ -240,7 +208,6 @@ internal static class MixerView
 				? SmallPair(model, x, y, smalls, s)
 				: Empty(model, x, y, 0, CellKey(x, y));
 
-		// Plain cells on the page: no panel behind them. Half a gap around each keeps neighbours a gap apart.
 		return new UiModifier
 		{
 			Key = string.Create(CultureInfo.InvariantCulture, $"c{x}"),
@@ -250,10 +217,6 @@ internal static class MixerView
 		};
 	}
 
-	/// <summary>
-	/// The larger of the editor's and the mixer's drawing of <paramref name="device"/>, in bytes as Macro Deck receives
-	/// it: a change to the device is sent as one patch of either.
-	/// </summary>
 	public static int Size(DeviceActions actions, MixerArt? art, VirtualDevice device)
 	{
 		var editor = new MixerModel(actions, art) { CellPressed = (_, _, _) => { } };
@@ -268,11 +231,9 @@ internal static class MixerView
 			MacroDeck.Ui.Model.Serialization.UiCanonicalJson.SerializeToUtf8Bytes(liveView.Tree).Length);
 	}
 
-	// A frame with an aspect gives the components a size to draw at.
 	private static UiRepeat<string> Fitted(MixerModel model) => new()
 	{
 		Key = "fr",
-		// Rebuilt when the device changes shape; values inside follow their states.
 		Items = UiValue.From<IReadOnlyList<string>>(() => [model.Device.Value.GetHashCode().ToString(CultureInfo.InvariantCulture)]),
 		KeySelector = key => key,
 		Template = (_, _) =>
@@ -297,8 +258,6 @@ internal static class MixerView
 		},
 	};
 
-	// Brushed metal when the image is there, a gradient when not. Square: a button is otherwise rounded like a deck tile,
-	// and the panel's own frame rounds and clips its corners.
 	private static UiModifier Background(MixerModel model, string key) =>
 		model.Art is { } art
 			? new UiModifier
@@ -738,9 +697,6 @@ internal static class MixerView
 			}
 			: new UiStack { Key = key, ColumnSpan = span > 1 ? span : default, RowSpan = span > 1 ? span : default };
 
-	// Background and radius style the button itself, so the modifier emits no node: the grid spans go on the button.
-	// cornerScale 0 gives square corners.
-	// glow, when it gives one, is the face while the DAW has the key on; pressing still shows the pressed face.
 	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height, double cornerScale,
 		Func<bool>? disabled, Func<UiGradient?>? glow = null) => new()
 	{

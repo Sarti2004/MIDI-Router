@@ -10,11 +10,6 @@ using MacroDeck.Ui.Runtime;
 
 namespace MIDIRouter.Deck;
 
-/// <summary>
-/// The Virtual Device page: the mixer as it looks on the deck, where pressing an empty cell places the chosen element
-/// and pressing an element selects it; the selected element's settings and action below. Every edit is saved at once,
-/// so the mixer folder follows.
-/// </summary>
 internal sealed class DeviceEditorView : IDisposable
 {
 	public const string PageId = "virtual-device";
@@ -142,8 +137,6 @@ internal sealed class DeviceEditorView : IDisposable
 				})],
 			},
 
-			// Next to Move, so it is in reach without scrolling to the inspector. A config button can't be disabled: with
-			// nothing selected it is plain and says what to do.
 			new UiConfigButton
 			{
 				Key = "delete-element",
@@ -416,7 +409,6 @@ internal sealed class DeviceEditorView : IDisposable
 			return;
 		}
 
-		// Keep the channel and the number across actions; the rest starts at the new action's defaults.
 		var binding = DeviceActions.Binding(element);
 		ChangeSelected(selected => selected with
 		{
@@ -467,7 +459,6 @@ internal sealed class DeviceEditorView : IDisposable
 		return true;
 	}
 
-	// Refuses a grid too small for an element on it.
 	private void Change(Func<VirtualDevice, VirtualDevice> change)
 	{
 		var changed = change(_store.Device);

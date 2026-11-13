@@ -8,16 +8,11 @@ internal enum DeviceElementKind
 {
 	Button,
 
-	// Half a cell: up to two share one, in slot 0 (top) and slot 1 (bottom).
 	SmallButton,
 	VerticalSlider,
 	HorizontalSlider,
 }
 
-/// <summary>
-/// One control of the virtual device: where it sits on the grid and the MIDI Router action it runs, with that action's
-/// parameters as the action editor stores them. A slider runs Send MIDI CC with its position as the value.
-/// </summary>
 internal sealed record DeviceElement(
 	string Id,
 	DeviceElementKind Kind,
@@ -34,7 +29,6 @@ internal sealed record DeviceElement(
 	[JsonIgnore]
 	public bool IsSlider => Kind is DeviceElementKind.VerticalSlider or DeviceElementKind.HorizontalSlider;
 
-	/// <summary>A slider that rests in the middle, as a pan control: it starts at 64, snaps there near it, and reads left and right.</summary>
 	public bool Centered { get; init; }
 
 	public bool Covers(int x, int y) => x >= X && x < X + Width && y >= Y && y < Y + Height;
@@ -52,7 +46,6 @@ internal enum MidiMessageKind
 	ProgramChange,
 }
 
-/// <summary>What an element sends, read from its action and parameters; channel 1-16.</summary>
 internal readonly record struct MidiBinding(MidiMessageKind Kind, int Channel, int Number)
 {
 	public override string ToString() => Kind switch
@@ -63,12 +56,10 @@ internal readonly record struct MidiBinding(MidiMessageKind Kind, int Channel, i
 	};
 }
 
-/// <summary>The one virtual device: a grid of elements, shown by the mixer folder view and exported to Cubase.</summary>
 internal sealed record VirtualDevice(string Name, int Columns, int Rows, IReadOnlyList<DeviceElement> Elements)
 {
 	public const int MaxGridSize = 8;
 
-	// Cubase script folders and Macro Deck variable names take it as is.
 	public const string Id = "virtual-device";
 
 	public static readonly VirtualDevice Default = new("Virtual Device", 6, 4, []);
@@ -80,7 +71,6 @@ internal sealed record VirtualDevice(string Name, int Columns, int Rows, IReadOn
 		Converters = { new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower) },
 	};
 
-	/// <summary>Why the element can't go where it is, ignoring itself: outside the grid, or on another element.</summary>
 	public string? PlacementError(DeviceElement element)
 	{
 		if (element.X < 0 || element.Y < 0 || element.X + element.Width > Columns || element.Y + element.Height > Rows)
@@ -93,7 +83,6 @@ internal sealed record VirtualDevice(string Name, int Columns, int Rows, IReadOn
 			: null;
 	}
 
-	/// <summary>Elements sending the same message as an earlier one: Cubase would see them as one control.</summary>
 	public IReadOnlyList<(DeviceElement Element, DeviceElement Twin, MidiBinding Binding)> DuplicateBindings()
 	{
 		var seen = new Dictionary<MidiBinding, DeviceElement>();
@@ -129,7 +118,6 @@ internal sealed record VirtualDevice(string Name, int Columns, int Rows, IReadOn
 
 	public string ToJson() => JsonSerializer.Serialize(new DeviceDocument(DeviceDocument.CurrentVersion, this), Json);
 
-	/// <summary>The stored device, keeping the elements that still fit; null when the text isn't a device.</summary>
 	public static VirtualDevice? FromJson(string json)
 	{
 		DeviceDocument? document;

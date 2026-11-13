@@ -3,13 +3,9 @@ using Serilog;
 
 namespace MIDIRouter.Deck;
 
-/// <summary>
-/// The virtual device in the plugin's Macro Deck storage. Edits apply at once, so the mixer folder shows them while
-/// they are written in the background, one write after another.
-/// </summary>
 internal sealed class DeviceStore(ILogger logger)
 {
-	private const string StorageKey = "virtual-device.json";
+	private const string StorageKey = "VirtualDevice.json";
 
 	private readonly ILogger _logger = logger.ForContext<DeviceStore>();
 	private readonly Lock _sync = new();
@@ -33,13 +29,13 @@ internal sealed class DeviceStore(ILogger logger)
 				device = VirtualDevice.FromJson(content);
 				if (device is null)
 				{
-					_logger.Warning("The stored virtual device is unreadable; starting an empty one.");
+					_logger.Warning("The config is unreadable; starting new one.");
 				}
 			}
 		}
 		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
-			_logger.Warning(ex, "The virtual device could not be read.");
+			_logger.Warning(ex, "could not read config");
 		}
 
 		_device = device ?? VirtualDevice.Default;

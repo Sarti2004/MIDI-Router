@@ -6,20 +6,12 @@ using MacroDeck.Sdk.Variables;
 
 namespace MIDIRouter.Deck;
 
-/// <summary>
-/// The MIDI Router actions an element can be set up with, and sending them on the device's own port as hardware does:
-/// a button sends its message when pressed and releases it when let go, a slider sends its CC with its position as the
-/// value. Switched off, nothing is sent. Each slider also has a writable variable holding that position, so other
-/// widgets and automations can read it and move the slider. What the DAW sends back to the port lights buttons and
-/// moves sliders bound to the same message.
-/// </summary>
 internal sealed class DeviceActions
 {
 	public const string SendNote = "send-note";
 	public const string SendControlChange = "send-cc";
 	public const string SendProgramChange = "send-program-change";
 
-	// The parameter names of those actions, read for the Cubase export and filled in for new elements.
 	public const string ChannelParameter = "channel";
 	public const string NoteParameter = "note";
 	public const string ControllerParameter = "controller";
@@ -29,17 +21,13 @@ internal sealed class DeviceActions
 	public const string VelocityParameter = "velocity";
 	public const string DurationParameter = "duration";
 
-	// Send MIDI note's types: on a device button, a tap is held for as long as the button is.
 	private const string NoteOn = "on";
 	private const string NoteOff = "off";
 
 	public const string SliderPrefix = "slider-";
 
-	// A centered slider's rest, and how near it a move snaps there, like a pan pot's detent.
 	public const int Center = 64;
 	private const int Detent = 2;
-	// As a touch-sensitive motor fader: a slider being moved ignores the DAW for this long after each move, so the
-	// DAW's echo of an older position doesn't pull it back under the finger.
 	private const long TouchHoldMs = 400;
 
 	private readonly DeviceStore _store;
@@ -59,10 +47,8 @@ internal sealed class DeviceActions
 		_port.StateChanged += OnPowerChanged;
 	}
 
-	/// <summary>A slider moved, by a touch, a variable or the DAW: its variable id and its value, 0-127.</summary>
 	public event Action<string, int>? SliderMoved;
 
-	/// <summary>The DAW turned a button's LED on or off: the element id and whether it is lit.</summary>
 	public event Action<string, bool>? LedChanged;
 
 	public bool IsOn => _port.State == DevicePortState.On;
@@ -71,16 +57,11 @@ internal sealed class DeviceActions
 
 	public IReadOnlyDictionary<string, IActionDefinition> ById { get; }
 
-	/// <summary>The actions an element of this kind may run: a slider only sends CCs.</summary>
 	public IReadOnlyList<IActionDefinition> For(DeviceElementKind kind) =>
 		kind is DeviceElementKind.VerticalSlider or DeviceElementKind.HorizontalSlider
 			? [.. All.Where(action => action.Id == SendControlChange)]
 			: All;
 
-	/// <summary>
-	/// The parameters the editor shows: a slider's value comes from its position, and a note lasts as long as its button
-	/// is held.
-	/// </summary>
 	public static bool IsEdited(DeviceElement element, ActionParameter parameter) =>
 		!(element.IsSlider && parameter.Name == ValueParameter) && !(element.ActionId == SendNote && parameter.Name == DurationParameter);
 
@@ -96,7 +77,6 @@ internal sealed class DeviceActions
 		};
 	}
 
-	/// <summary>Every parameter at its default, then the channel and number given.</summary>
 	public Dictionary<string, object?> Defaults(string actionId, int channel, int number)
 	{
 		var parameters = ById.TryGetValue(actionId, out var action)
@@ -112,9 +92,6 @@ internal sealed class DeviceActions
 		return parameters;
 	}
 
-	/// <summary>
-	/// A button went down: its note on (or note off, for a note-off button), its CC at the set value, or its program.
-	/// </summary>
 	public void Press(DeviceElement element)
 	{
 		if (!IsOn || element.IsSlider || Binding(element) is not { } binding)
@@ -141,10 +118,6 @@ internal sealed class DeviceActions
 		_held[element.Id] = true;
 	}
 
-	/// <summary>
-	/// A button came up: its note off, or its CC at 0, so the DAW sees a release as from a hardware button. A note-on
-	/// button keeps its note sounding until a note-off button ends it.
-	/// </summary>
 	public void Release(DeviceElement element)
 	{
 		if (!_held.TryRemove(element.Id, out _) || !IsOn || Binding(element) is not { } binding)
@@ -162,10 +135,6 @@ internal sealed class DeviceActions
 		}
 	}
 
-	/// <summary>
-	/// Sends the slider's CC at <paramref name="value"/> (0-127) and keeps it as the slider's position. Switched off, the
-	/// slider stays where it is.
-	/// </summary>
 	public Task SlideAsync(DeviceElement element, int value, CancellationToken cancellationToken)
 	{
 		if (!IsOn)
@@ -194,14 +163,12 @@ internal sealed class DeviceActions
 	public int SliderValue(DeviceElement element) =>
 		_sliderValues.TryGetValue(SliderVariableId(element), out var value) ? value : element.Centered ? Center : 0;
 
-	/// <summary>The value a move to <paramref name="value"/> sends: within range, and at the center when near it on a centered slider.</summary>
 	public static int Snap(DeviceElement element, int value)
 	{
 		value = Math.Clamp(value, 0, 127);
 		return element.Centered && Math.Abs(value - Center) <= Detent ? Center : value;
 	}
 
-	/// <summary>Whether the DAW has the button's LED on.</summary>
 	public bool Led(DeviceElement element) => _leds.GetValueOrDefault(element.Id);
 
 	public static string SliderVariableId(DeviceElement element) => SliderPrefix + element.Id;
@@ -224,7 +191,6 @@ internal sealed class DeviceActions
 			? VariableReading.Of(SliderValue(slider), 0, 127, 1)
 			: VariableReading.Unavailable;
 
-	// Another widget or an automation set the variable: the slider moves and sends its CC.
 	public async ValueTask<VariableWriteResult> WriteAsync(VirtualDevice device, string localId, object? value, CancellationToken cancellationToken)
 	{
 		if (device.Elements.FirstOrDefault(element => element.IsSlider && SliderVariableId(element) == localId) is not { } slider)
@@ -243,8 +209,6 @@ internal sealed class DeviceActions
 		return VariableWriteResult.Applied();
 	}
 
-	// The DAW's feedback: a note or CC lights the buttons sending it and moves the sliders sending it; a program change
-	// lights the buttons sending that program on its channel and puts out the others there.
 	private void OnReceived(DeviceMessage message)
 	{
 		foreach (var element in _store.Device.Elements)
@@ -275,7 +239,6 @@ internal sealed class DeviceActions
 		}
 	}
 
-	// The slider takes the DAW's position without sending it back.
 	private void Follow(DeviceElement slider, int value)
 	{
 		var variableId = SliderVariableId(slider);
@@ -300,7 +263,6 @@ internal sealed class DeviceActions
 		LedChanged?.Invoke(elementId, lit);
 	}
 
-	// Switched off, every LED goes out and nothing is held any more; the sliders stay where they are.
 	private void OnPowerChanged()
 	{
 		if (_port.State == DevicePortState.On)

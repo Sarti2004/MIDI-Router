@@ -4,22 +4,14 @@ using System.Text.Json;
 
 namespace MIDIRouter.Deck;
 
-/// <summary>
-/// Writes the virtual device as a Cubase / Nuendo MIDI Remote driver script (midiremote_api_v1, ES5). The surface
-/// mirrors the device's grid and every control is bound to the MIDI it sends, both ways: Cubase sends the control's
-/// value back, which lights the device's buttons and moves its faders. Mapping to Cubase functions is left to the
-/// Mapping Assistant.
-/// </summary>
 internal static class CubaseScript
 {
 	public const string Vendor = "MIDIRouter";
 
-	// One grid cell is a 2 x 2 block of surface units: the control, and a label strip under it.
 	private const double Cell = 2;
 	private const double LabelHeight = 0.6;
 	private const double SmallLabelHeight = 0.4;
 
-	// Driver Scripts folders of the Steinberg apps that have run at least once, e.g. Documents/Steinberg/Cubase.
 	public static IReadOnlyList<string> DriverScriptFolders()
 	{
 		var steinberg = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Steinberg");
@@ -38,11 +30,9 @@ internal static class CubaseScript
 		}
 	}
 
-	// "Local", not "Public": Cubase overwrites Public on start.
 	public static string RelativePath() =>
 		Path.Combine("Local", Vendor, VirtualDevice.Id, $"{Vendor}_{VirtualDevice.Id}.js");
 
-	// Cubase finds the device by its ports, named after it while it is switched on.
 	public static string Generate(VirtualDevice device)
 	{
 		var portName = device.Name;
@@ -78,7 +68,6 @@ internal static class CubaseScript
 
 			var name = Invariant($"control{index + 1}");
 
-			// A small button is the top or bottom half of its cell, with a narrower label strip.
 			var (x, y, width, height, labelHeight) = element.Kind == DeviceElementKind.SmallButton
 				? (element.X * Cell, (element.Y * Cell) + (element.Slot * Cell / 2), Cell, (Cell / 2) - SmallLabelHeight, SmallLabelHeight)
 				: (element.X * Cell, element.Y * Cell, element.Width * Cell, (element.Height * Cell) - LabelHeight, LabelHeight);
@@ -106,7 +95,6 @@ internal static class CubaseScript
 		return js.ToString();
 	}
 
-	// A JSON string is a valid ES5 string literal; non-ASCII comes out as \u escapes.
 	private static string Quote(string text) => JsonSerializer.Serialize(text);
 
 	private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
