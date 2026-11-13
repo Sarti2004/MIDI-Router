@@ -5,7 +5,7 @@ namespace MIDIRouter.Deck;
 
 internal sealed class DeviceStore(ILogger logger)
 {
-	private const string StorageKey = "VirtualDevice.json";
+	private const string StorageKey = "virtual-device.json";
 
 	private readonly ILogger _logger = logger.ForContext<DeviceStore>();
 	private readonly Lock _sync = new();

@@ -20,7 +20,8 @@ internal static class DeckExport
 		var script = CubaseScript.Generate(device);
 		foreach (var target in targets)
 		{
-			var path = Path.Combine(target, CubaseScript.RelativePath());
+			var path = Path.Combine(target, CubaseScript.RelativePath(device));
+			RemoveOtherScripts(Path.Combine(target, CubaseScript.VendorFolder()), Path.GetDirectoryName(path)!);
 			Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 			await File.WriteAllTextAsync(path, script, cancellationToken).ConfigureAwait(false);
 		}
@@ -29,5 +30,26 @@ internal static class DeckExport
 			? string.Join(", ", targets.Select(target => Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(target)))))
 			: string.Empty;
 		return new DeckExportResult(apps, fallback);
+	}
+
+	// There is one virtual device: a script exported under an earlier name would stay listed in Cubase. Only folders
+	// holding nothing but our generated script are removed.
+	private static void RemoveOtherScripts(string vendorFolder, string keep)
+	{
+		if (!Directory.Exists(vendorFolder))
+		{
+			return;
+		}
+
+		foreach (var folder in Directory.GetDirectories(vendorFolder))
+		{
+			var files = Directory.GetFileSystemEntries(folder);
+			if (!string.Equals(Path.GetFullPath(folder), Path.GetFullPath(keep), StringComparison.OrdinalIgnoreCase)
+				&& files.Length == 1
+				&& Path.GetFileName(files[0]).Equals($"{CubaseScript.Vendor}_{Path.GetFileName(folder)}.js", StringComparison.OrdinalIgnoreCase))
+			{
+				Directory.Delete(folder, recursive: true);
+			}
+		}
 	}
 }

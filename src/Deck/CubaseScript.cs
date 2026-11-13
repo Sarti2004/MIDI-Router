@@ -30,8 +30,19 @@ internal static class CubaseScript
 		}
 	}
 
-	public static string RelativePath() =>
-		Path.Combine("Local", Vendor, VirtualDevice.Id, $"{Vendor}_{VirtualDevice.Id}.js");
+	public static string VendorFolder() => Path.Combine("Local", Vendor);
+
+	// Cubase lists the script under the device name it passes to makeDeviceDriver, and finds it at
+	// Local/<vendor>/<device>/<vendor>_<device>.js: the folder and file carry the same name.
+	public static string DeviceName(VirtualDevice device)
+	{
+		var invalid = Path.GetInvalidFileNameChars().Concat(['/', '\\', ':', '*', '?', '"', '<', '>', '|']).ToHashSet();
+		var name = new string([.. device.Name.Trim().Select(c => invalid.Contains(c) ? '_' : c)]).Trim('.', ' ');
+		return name.Length == 0 ? VirtualDevice.Default.Name : name;
+	}
+
+	public static string RelativePath(VirtualDevice device) =>
+		Path.Combine(VendorFolder(), DeviceName(device), $"{Vendor}_{DeviceName(device)}.js");
 
 	public static string Generate(VirtualDevice device)
 	{
@@ -41,7 +52,7 @@ internal static class CubaseScript
 		js.AppendLine("// edits made here are overwritten.");
 		js.AppendLine("var midiremote_api = require('midiremote_api_v1')");
 		js.AppendLine();
-		js.AppendLine(Invariant($"var deviceDriver = midiremote_api.makeDeviceDriver({Quote(Vendor)}, {Quote(VirtualDevice.Id)}, {Quote("MIDI Router")})"));
+		js.AppendLine(Invariant($"var deviceDriver = midiremote_api.makeDeviceDriver({Quote(Vendor)}, {Quote(DeviceName(device))}, {Quote("MIDI Router")})"));
 		js.AppendLine();
 		js.AppendLine("var midiInput = deviceDriver.mPorts.makeMidiInput()");
 		js.AppendLine("var midiOutput = deviceDriver.mPorts.makeMidiOutput()");

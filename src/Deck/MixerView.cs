@@ -469,13 +469,15 @@ internal static class MixerView
 		Key = CellKey(x, y),
 		ColumnSpan = span > 1 ? span : default,
 		RowSpan = span > 1 ? span : default,
+		Fill = true,
 		Direction = UiComponentDirections.Vertical,
 		Gap = B(s, CellGap / 2),
 		Children =
 		[
+			// Each half fills its share: an empty half has no content of its own and would otherwise collapse.
 			.. Enumerable.Range(0, 2).Select(slot => smalls.FirstOrDefault(small => small.Slot == slot) is { } small
 				? (UiElement)Key(model, small, small: true, s, 1, 1)
-				: Empty(model, x, y, slot, CellKey(x, y) + (slot == 0 ? "-top" : "-bottom"))),
+				: Empty(model, x, y, slot, CellKey(x, y) + (slot == 0 ? "-top" : "-bottom"), fill: true)),
 		],
 	};
 
@@ -493,6 +495,7 @@ internal static class MixerView
 			Justify = UiComponentJustify.SpaceBetween,
 			Align = UiComponentAlignments.Stretch,
 			Padding = B(s, small ? 0.008 : 0.012),
+			Fill = small,
 			Background = Transparent,
 			Events = model.Editing
 				? [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(element.X, element.Y, element.Slot))]
@@ -685,17 +688,18 @@ internal static class MixerView
 
 	// An empty cell or half: nothing in the live mixer, a faint place target in the editor. One node each, as an
 	// empty grid has many.
-	private static UiElement Empty(MixerModel model, int x, int y, int slot, string key, int span = 1) =>
+	private static UiElement Empty(MixerModel model, int x, int y, int slot, string key, int span = 1, bool fill = false) =>
 		model.Editing
 			? new UiButton
 			{
 				Key = key,
+				Fill = fill,
 				Background = "#00000040",
 				BorderStyle = UiComponentBorderStyles.Static,
 				BorderColor = "#5A5D6466",
 				Events = [UiEventHandler.On(UiComponentEvents.Press, () => model.CellPressed!(x, y, slot))],
 			}
-			: new UiStack { Key = key, ColumnSpan = span > 1 ? span : default, RowSpan = span > 1 ? span : default };
+			: new UiStack { Key = key, ColumnSpan = span > 1 ? span : default, RowSpan = span > 1 ? span : default, Fill = fill };
 
 	private static UiModifier Styled(string key, string label, UiButton button, Func<bool> lit, Func<bool> selected, int width, int height, double cornerScale,
 		Func<bool>? disabled, Func<UiGradient?>? glow = null) => new()
