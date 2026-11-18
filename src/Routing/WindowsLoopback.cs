@@ -69,7 +69,7 @@ internal sealed unsafe partial class WindowsLoopback : IDisposable
 	}
 
 	// Null when MIDI Services can't make loopbacks. Throws InvalidOperationException when it can but creating this one failed.
-	public static WindowsLoopback? TryCreate(string name, IReadOnlyCollection<string> present)
+	public static WindowsLoopback? TryCreate(string name, IReadOnlyCollection<string> present, bool pairOnly = false)
 	{
 		if (!IsAvailable())
 		{
@@ -87,7 +87,9 @@ internal sealed unsafe partial class WindowsLoopback : IDisposable
 
 		if (FindPort(name, present) is not null)
 		{
-			return new WindowsLoopback(BasicTransport, name, associationId);
+			return pairOnly
+				? throw new InvalidOperationException($"A MIDI port named \"{name}\" already exists.")
+				: new WindowsLoopback(BasicTransport, name, associationId);
 		}
 
 		var uniqueId = UniqueIdFor(name);
@@ -95,7 +97,7 @@ internal sealed unsafe partial class WindowsLoopback : IDisposable
 		{
 			// A failed call with no reply is how the service answers for a transport it hasn't loaded.
 			var basic = new JsonObject { ["endpoint"] = Endpoint(name, uniqueId) };
-			if (Send(BasicTransport, Create(associationId, basic)) is { } basicReply)
+			if (!pairOnly && Send(BasicTransport, Create(associationId, basic)) is { } basicReply)
 			{
 				EnsureSucceeded(basicReply);
 				return new WindowsLoopback(BasicTransport, name, associationId);

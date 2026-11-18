@@ -114,6 +114,15 @@ This is particularly useful on Windows, where many MIDI drivers allow only one a
 - Send MIDI CC
 - MIDI panic
 - Learn MIDI code
+- Export to Cubase
+
+## Virtual Device (beta)
+
+The Virtual Device is a customizable mixer of buttons and sliders in Macro Deck that works like a hardware MIDI controller. It creates its own midi ports and your DAW recognizes these ports just like those of a physical MIDI controller.
+
+You can also export the device to Cubase / Nuendo as a MIDI Remote script, preserving its layout and MIDI assignments. This allows you to map controls using Cubase's Mapping Assistant.
+
+[More details and configuration](https://github.com/Sarti2004/MIDI-Router/wiki/Virtual-Device)
 
 ## Subscription API for other plugins
 

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "include": ["Assets/Audio/control-mode.wav", "Assets/Audio/play-mode.wav"],
+  "include": ["Assets/Audio/control-mode.wav", "Assets/Audio/play-mode.wav", "Assets/Mixer/brushed-metal.jpg"],
   "targets": {
     "win-x64": {
       "executable": "dotnet",

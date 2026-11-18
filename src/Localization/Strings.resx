@@ -223,6 +223,135 @@
   <data name="Actions.Learn.NoKeyboards" xml:space="preserve">
     <value>No keyboards are open to learn from</value>
   </data>
+  <data name="Actions.ExportCubase.Name" xml:space="preserve">
+    <value>Export to Cubase</value>
+  </data>
+  <data name="Actions.ExportCubase.Description" xml:space="preserve">
+    <value>Writes the virtual device as a Cubase / Nuendo MIDI Remote script.</value>
+  </data>
+  <data name="Actions.ExportCubase.Exported" xml:space="preserve">
+    <value>Exported to {apps}</value>
+  </data>
+  <data name="Actions.ExportCubase.ExportedDetail" xml:space="preserve">
+    <value>Switch the Virtual Device on, then click Reload Scripts in the MIDI Remote tab: Cubase finds it by its MIDI ports. For the device to follow Cubase, set fader mappings to Jump and mute or solo buttons to Toggle in the Mapping Assistant.</value>
+  </data>
+  <data name="Actions.ExportCubase.ExportedToFolder" xml:space="preserve">
+    <value>Exported, but no Cubase or Nuendo was found</value>
+  </data>
+  <data name="Actions.ExportCubase.Failed" xml:space="preserve">
+    <value>Export failed</value>
+  </data>
+  <data name="Editor.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Editor.Columns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="Editor.Rows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="Editor.Modes.Move" xml:space="preserve">
+    <value>Move</value>
+  </data>
+  <data name="Editor.Kinds.Button" xml:space="preserve">
+    <value>Button</value>
+  </data>
+  <data name="Editor.Kinds.SmallButton" xml:space="preserve">
+    <value>Small button</value>
+  </data>
+  <data name="Editor.Kinds.VerticalSlider" xml:space="preserve">
+    <value>Vertical slider</value>
+  </data>
+  <data name="Editor.Kinds.HorizontalSlider" xml:space="preserve">
+    <value>Horizontal slider</value>
+  </data>
+  <data name="Editor.Selected" xml:space="preserve">
+    <value>{label} at {position}</value>
+  </data>
+  <data name="Editor.Label" xml:space="preserve">
+    <value>Label</value>
+  </data>
+  <data name="Editor.Color" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="Editor.Width" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="Editor.Height" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="Editor.Slot" xml:space="preserve">
+    <value>Half</value>
+  </data>
+  <data name="Editor.Slots.Top" xml:space="preserve">
+    <value>Top</value>
+  </data>
+  <data name="Editor.Slots.Bottom" xml:space="preserve">
+    <value>Bottom</value>
+  </data>
+  <data name="Editor.Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="Editor.Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Editor.Status.DeleteHint" xml:space="preserve">
+    <value>Select an element to delete it.</value>
+  </data>
+  <data name="Editor.Status.Deleted" xml:space="preserve">
+    <value>{element} deleted.</value>
+  </data>
+  <data name="Editor.Export" xml:space="preserve">
+    <value>Export to Cubase</value>
+  </data>
+  <data name="Editor.Status.Hint" xml:space="preserve">
+    <value>Choose an element above, then press an empty cell to place it, or press an element to select it.</value>
+  </data>
+  <data name="Editor.Status.MoveHint" xml:space="preserve">
+    <value>Press the element to move, then the cell to move it to.</value>
+  </data>
+  <data name="Editor.Status.MoveTarget" xml:space="preserve">
+    <value>Now press the cell to move {label} to.</value>
+  </data>
+  <data name="Editor.Status.Moved" xml:space="preserve">
+    <value>Moved {label} to {position}.</value>
+  </data>
+  <data name="Editor.Status.Exported" xml:space="preserve">
+    <value>Exported to {apps}. With the device switched on, click Reload Scripts in Cubase's MIDI Remote tab. In the Mapping Assistant, set faders to Jump and mute or solo buttons to Toggle, so the device follows Cubase.</value>
+  </data>
+  <data name="Editor.Status.ExportedToFolder" xml:space="preserve">
+    <value>Exported to {folder}. No Cubase or Nuendo Driver Scripts folder was found: copy its Local folder into that folder.</value>
+  </data>
+  <data name="Editor.Status.ExportFailed" xml:space="preserve">
+    <value>Export failed: {error}</value>
+  </data>
+  <data name="Pages.VirtualDevice" xml:space="preserve">
+    <value>Virtual Device</value>
+  </data>
+  <data name="FolderViews.Mixer.Name" xml:space="preserve">
+    <value>Virtual MIDI Device</value>
+  </data>
+  <data name="FolderViews.Mixer.Description" xml:space="preserve">
+    <value>The virtual device has its own MIDI ports, and its buttons and faders follow what the DAW sends back.</value>
+  </data>
+  <data name="Actions.ExportCubase.NoElements" xml:space="preserve">
+    <value>The virtual device is empty</value>
+  </data>
+  <data name="Actions.ExportCubase.NoElementsDetail" xml:space="preserve">
+    <value>Add buttons and faders on the Virtual Device page of MIDI Router.</value>
+  </data>
+  <data name="Editor.Status.MoveTargetSelected" xml:space="preserve">
+    <value>Press the cell to move the selected element to, or another element to move that one.</value>
+  </data>
+  <data name="Editor.Status.Duplicate" xml:space="preserve">
+    <value>{element} and {twin} both send {binding}: Cubase sees them as one control.</value>
+  </data>
+  <data name="Actions.ExportCubase.ExportedToFolderDetail" xml:space="preserve">
+    <value>Copy the Local folder from {folder} into the Driver Scripts folder. On macOS, Macro Deck also needs access to the Documents folder (System Settings → Privacy &amp; Security → Files and Folders).</value>
+  </data>
+  <data name="Editor.Status.Full" xml:space="preserve">
+    <value>The device is full: Macro Deck can't draw more than this. Remove an element or use small buttons, which take the least.</value>
+  </data>
   <data name="Events.LastLearned" xml:space="preserve">
     <value>{option} (last learned)</value>
   </data>
@@ -372,5 +501,32 @@
   </data>
   <data name="Issues.InputIsRouterOutput.Description" xml:space="preserve">
     <value>Reading the router's output back would create a feedback loop, so this input is ignored. Remove it from the keyboards.</value>
+  </data>
+  <data name="Mixer.Power" xml:space="preserve">
+    <value>Power</value>
+  </data>
+  <data name="Mixer.MidiIn" xml:space="preserve">
+    <value>IN</value>
+  </data>
+  <data name="Mixer.MidiOut" xml:space="preserve">
+    <value>OUT</value>
+  </data>
+  <data name="Device.PowerFailed" xml:space="preserve">
+    <value>The Virtual Device couldn't switch on</value>
+  </data>
+  <data name="Device.NoMidiServices" xml:space="preserve">
+    <value>It needs Windows MIDI Services to create its MIDI ports, and this PC doesn't have it. Install Windows MIDI Services, then switch the device on again.</value>
+  </data>
+  <data name="Device.Unsupported" xml:space="preserve">
+    <value>This system can't create MIDI ports for it.</value>
+  </data>
+  <data name="Device.NameTaken" xml:space="preserve">
+    <value>{name} is the name of the router's own port. Give the Virtual Device another name on its page.</value>
+  </data>
+  <data name="Editor.Centered.Label" xml:space="preserve">
+    <value>Centered (pan)</value>
+  </data>
+  <data name="Editor.Centered.Description" xml:space="preserve">
+    <value>Rests in the middle and reads left and right, with a detent at the centre. Double-press it to centre it. For pan.</value>
   </data>
 </root>

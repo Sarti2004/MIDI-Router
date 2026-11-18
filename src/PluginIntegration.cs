@@ -7,8 +7,14 @@ using MacroDeck.Sdk.Actions;
 using MacroDeck.Sdk.ConfigFlow;
 using MacroDeck.Sdk.Events;
 using MacroDeck.Sdk.Issues;
+using MacroDeck.Sdk.Notifications;
+using MacroDeck.Sdk.FolderViews;
+using MacroDeck.Sdk.Ui;
 using MacroDeck.Sdk.Variables;
+using MacroDeck.Ui.Model.Surfaces;
+using MacroDeck.Ui.Runtime;
 using MIDIRouter.Actions;
+using MIDIRouter.Deck;
 using MIDIRouter.Integration;
 using MIDIRouter.Routing;
 using Serilog;
@@ -22,12 +28,17 @@ internal sealed class PluginIntegration :
 	IVariableProvider,
 	IUiConfigFlowProvider,
 	IIntegrationIssueProvider,
+	IFolderViewProvider,
+	IUiProvider,
 	IDisposable
 {
 	private const string EnabledStorageKey = "routing-enabled";
 
 	private static readonly TimeSpan VariableFallbackRefresh = TimeSpan.FromSeconds(5);
 	private static readonly TimeSpan StateDebounce = TimeSpan.FromMilliseconds(30);
+
+	// Renaming the device delay to move its ports to the new name.
+	private static readonly TimeSpan RenameDelay = TimeSpan.FromSeconds(1.5);
 
 	private static readonly (string Name, string Id, VariableType Type, Func<MidiRouter, object?> Read)[] VariableSpecs =
 	[
@@ -44,10 +55,18 @@ internal sealed class PluginIntegration :
 
 	private static readonly IReadOnlyCollection<string> VariableIds = [.. VariableSpecs.Select(spec => spec.Id)];
 
+	private static readonly IReadOnlyList<VariableDefinition> RouterVariables =
+		[.. VariableSpecs.Select(spec => VariableDefinition.Eager(spec.Name, spec.Type, refreshInterval: VariableFallbackRefresh) with { Id = spec.Id })];
+
 	private readonly MidiRouter _router;
 	private readonly PluginApi _pluginApi;
 	private readonly ClaimSink _sink;
 	private readonly IPluginCatalogNotifier _catalogNotifier;
+	private readonly DeviceStore _device;
+	private readonly DevicePort _port;
+	private readonly DeviceActions _deviceActions;
+	private readonly Lock _sliderRefreshLock = new();
+	private readonly HashSet<string> _movedSliders = new(StringComparer.Ordinal);
 	private readonly ILogger _logger;
 	private readonly HashSet<string> _warnedOperators = new(StringComparer.Ordinal);
 	private readonly Lock _refreshLock = new();
@@ -55,6 +74,8 @@ internal sealed class PluginIntegration :
 	private volatile IIntegrationContext? _context;
 	private CancellationTokenSource? _lifetime;
 	private bool _refreshScheduled;
+	private volatile IReadOnlyList<VariableDefinition> _variables = RouterVariables;
+	private CancellationTokenSource? _rename;
 
 	public PluginIntegration(MidiRouter router, IPluginCatalogNotifier catalogNotifier, ILogger logger)
 	{
@@ -63,6 +84,8 @@ internal sealed class PluginIntegration :
 		_logger = logger.ForContext<PluginIntegration>();
 		_pluginApi = new PluginApi(router, logger);
 		_sink = new ClaimSink(this);
+		_device = new DeviceStore(logger);
+		_port = new DevicePort(logger);
 
 		Actions =
 		[
@@ -73,11 +96,15 @@ internal sealed class PluginIntegration :
 			new SendProgramChangeAction(router),
 			new PanicAction(router),
 			new LearnCodeAction(router, () => _context?.NotificationService),
+			new ExportCubaseAction(_device, () => _context?.NotificationService),
 		];
+		_deviceActions = new DeviceActions(Actions, _device, _port);
 
 		_router.Modes.Changed += OnStateChanged;
 		_router.StatusChanged += OnStatusChanged;
 		_router.Learned += OnStateChanged;
+		_device.Changed += OnDeviceChanged;
+		_deviceActions.SliderMoved += OnSliderMoved;
 	}
 
 	public IReadOnlyList<IActionDefinition> Actions { get; }
@@ -86,8 +113,7 @@ internal sealed class PluginIntegration :
 
 	public IReadOnlyList<EventDefinition> EventDefinitions => RouterEvents.Definitions;
 
-	public IReadOnlyList<VariableDefinition> Variables { get; } =
-		[.. VariableSpecs.Select(spec => VariableDefinition.Eager(spec.Name, spec.Type, refreshInterval: VariableFallbackRefresh) with { Id = spec.Id })];
+	public IReadOnlyList<VariableDefinition> Variables => _variables;
 
 	public IReadOnlyList<VariableDefinition> DeclaredVariables => Variables;
 
@@ -113,6 +139,8 @@ internal sealed class PluginIntegration :
 		context.Events.BindingsChanged += ApplyBindings;
 
 		var enabled = await context.Storage.ReadAsync(EnabledStorageKey).ConfigureAwait(false);
+		await _device.LoadAsync(context.Storage).ConfigureAwait(false);
+		_mixerArt ??= await RegisterMixerArtAsync(context).ConfigureAwait(false);
 		var config = await ReadConfigAsync(context).ConfigureAwait(false);
 
 		// Opening devices can take some time
@@ -139,6 +167,7 @@ internal sealed class PluginIntegration :
 			config.InputDevices.Count,
 			config.OutputName.Length > 0 ? config.OutputName : "(none)",
 			_router.Modes.CurrentName);
+		_ = NotifyDeclarationsAsync(context);
 		_ = RefreshHostState(issuesChanged: true);
 	}
 
@@ -152,7 +181,9 @@ internal sealed class PluginIntegration :
 		_router.Sink = null;
 		_lifetime?.Cancel();
 		_context = null;
-		return Task.CompletedTask;
+
+		// The ports go with the plugin
+		return _port.SwitchOffAsync();
 	}
 
 	public void Dispose()
@@ -160,11 +191,101 @@ internal sealed class PluginIntegration :
 		_router.Modes.Changed -= OnStateChanged;
 		_router.StatusChanged -= OnStatusChanged;
 		_router.Learned -= OnStateChanged;
+		_device.Changed -= OnDeviceChanged;
+		_deviceActions.SliderMoved -= OnSliderMoved;
+		_rename?.Cancel();
+		_port.Dispose();
 		_pluginApi.Dispose();
 		_lifetime?.Dispose();
 	}
 
 	public IConfigFlow CreateConfigFlow() => new RouterConfigFlow(_router);
+
+	private static FolderViewDescriptor MixerFolderView { get; } = new(
+		"mixer",
+		Strings.FolderViews.Mixer.Name(),
+		Strings.FolderViews.Mixer.Description());
+
+	private string? _qualifiedMixerViewId;
+	private volatile MixerArt? _mixerArt;
+
+	public IReadOnlyList<FolderViewDescriptor> GetFolderViews() => [MixerFolderView];
+
+	public async Task InitializeAsync(IFolderViewProviderContext context, CancellationToken cancellationToken = default)
+	{
+		var registration = await context.RegisterFolderViewAsync(MixerFolderView, cancellationToken).ConfigureAwait(false);
+		_qualifiedMixerViewId = registration.FolderViewId;
+	}
+
+	public IReadOnlyList<UiSurfaceDeclaration> Surfaces { get; } =
+	[
+		new UiSurfaceDeclaration { Kind = UiSurfaceKinds.Page, SessionMode = UiSessionModes.Exclusive },
+		new UiSurfaceDeclaration { Kind = UiSurfaceKinds.Folder, SessionMode = UiSessionModes.Shared },
+	];
+
+	public IReadOnlyList<UiPageDeclaration> Pages { get; } =
+		[new UiPageDeclaration { Id = DeviceEditorView.PageId, Title = Strings.Pages.VirtualDevice(), IconName = "sliders" }];
+
+	public Task<IUiSession?> CreateSessionAsync(UiSessionRequest request, CancellationToken cancellationToken)
+	{
+		var surface = request.Surface;
+		if (surface.Kind == UiSurfaceKinds.Page && Attribute(surface, UiPageSurfaceAttributes.PageId) == DeviceEditorView.PageId)
+		{
+			var editor = new DeviceEditorView(_device, _deviceActions, _mixerArt);
+			return Task.FromResult<IUiSession?>(new ViewSession(new UiView(surface, editor.Root()), editor.Dispose));
+		}
+
+		if (surface.Kind == UiSurfaceKinds.Folder
+			&& Attribute(surface, UiFolderSurfaceAttributes.ViewId) is { } viewId
+			&& (viewId == MixerFolderView.Id || viewId == _qualifiedMixerViewId))
+		{
+			var mixer = new MixerModel(_deviceActions, _mixerArt) { PowerPressed = TogglePowerAsync };
+			mixer.Device.Set(_device.Device);
+			mixer.Power.Set(_port.State);
+			void OnChanged() => mixer.Device.Set(_device.Device);
+			void OnPower() => mixer.Power.Set(_port.State);
+			void OnActivity(bool input) => (input ? mixer.MidiIn : mixer.MidiOut).Pulse();
+			void OnSlider(string variableId, int value)
+			{
+				if (mixer.Levels.TryGetValue(variableId[DeviceActions.SliderPrefix.Length..], out var level))
+				{
+					level.Set(value / 127.0);
+				}
+			}
+
+			void OnLed(string elementId, bool lit)
+			{
+				if (mixer.Leds.TryGetValue(elementId, out var led))
+				{
+					led.Set(lit);
+				}
+			}
+
+			_device.Changed += OnChanged;
+			_port.StateChanged += OnPower;
+			_port.Activity += OnActivity;
+			_deviceActions.SliderMoved += OnSlider;
+			_deviceActions.LedChanged += OnLed;
+			return Task.FromResult<IUiSession?>(new ViewSession(new UiView(surface, MixerView.Folder(mixer)), () =>
+			{
+				foreach (var element in _device.Device.Elements.Where(element => mixer.Lit.TryGetValue(element.Id, out var held) && held.Peek()))
+				{
+					_deviceActions.Release(element);
+				}
+
+				_device.Changed -= OnChanged;
+				_port.StateChanged -= OnPower;
+				_port.Activity -= OnActivity;
+				_deviceActions.SliderMoved -= OnSlider;
+				_deviceActions.LedChanged -= OnLed;
+			}));
+		}
+
+		return Task.FromResult<IUiSession?>(null);
+	}
+
+	private static string? Attribute(MacroDeck.Ui.Model.Surfaces.UiSurface surface, string name) =>
+		surface.Attributes.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
 	public Task<DynamicOptionsResult> GetEventOptionsAsync(EventOptionsContext context, CancellationToken cancellationToken)
 	{
@@ -199,9 +320,19 @@ internal sealed class PluginIntegration :
 
 	public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken = default)
 	{
+		if (DeviceActions.OwnsVariable(localId))
+		{
+			return ValueTask.FromResult(_deviceActions.Read(_device.Device, localId));
+		}
+
 		var spec = VariableSpecs.FirstOrDefault(spec => string.Equals(spec.Id, localId, StringComparison.Ordinal));
 		return ValueTask.FromResult(spec.Read?.Invoke(_router) is { } value ? VariableReading.Of(value) : VariableReading.Unavailable);
 	}
+
+	public ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default) =>
+		DeviceActions.OwnsVariable(localId)
+			? _deviceActions.WriteAsync(_device.Device, localId, value, cancellationToken)
+			: ValueTask.FromResult(VariableWriteResult.NotWritable());
 
 	public Task<IReadOnlyList<IntegrationIssue>> GetIssuesAsync(CancellationToken cancellationToken = default)
 	{
@@ -254,6 +385,76 @@ internal sealed class PluginIntegration :
 	private Task SaveEnabledAsync(bool enabled) =>
 		_context?.Storage.WriteAsync(EnabledStorageKey, enabled.ToString(CultureInfo.InvariantCulture)) ?? Task.CompletedTask;
 
+	// The power key
+	private Task TogglePowerAsync(CancellationToken cancellationToken) => SetPowerAsync(_port.State == DevicePortState.Off);
+
+	private async Task SetPowerAsync(bool on)
+	{
+		if (on)
+		{
+			var reserved = _router.Config.OutputName is { Length: > 0 } routerPort ? [routerPort] : Array.Empty<string>();
+			var result = await _port.SwitchOnAsync(_device.Device.Name, reserved).ConfigureAwait(false);
+			if (result.Failure != DevicePowerFailure.None)
+			{
+				await NotifyAsync(Strings.Device.PowerFailed(), result.Failure switch
+				{
+					DevicePowerFailure.Unsupported => OperatingSystem.IsWindows() ? Strings.Device.NoMidiServices() : Strings.Device.Unsupported(),
+					DevicePowerFailure.NameTaken => Strings.Device.NameTaken(_device.Device.Name),
+					_ => LocalizedText.FromLiteral(result.Error ?? string.Empty),
+				}).ConfigureAwait(false);
+			}
+		}
+		else
+		{
+			await _port.SwitchOffAsync().ConfigureAwait(false);
+		}
+	}
+
+	// Toasts are best effort.
+	private async Task NotifyAsync(LocalizedText title, LocalizedText message)
+	{
+		if (_context?.NotificationService is not { } notifications)
+		{
+			return;
+		}
+
+		try
+		{
+			await notifications.ShowAsync(new NotificationOptions { Title = title, Message = message, Severity = NotificationSeverity.Warning }).ConfigureAwait(false);
+		}
+		catch (NotificationException)
+		{
+		}
+	}
+
+	// A renamed device that is on moves its ports to the new name, as soon as typing pauses.
+	private void RenamePorts()
+	{
+		if (_port.State != DevicePortState.On || _port.Name == _device.Device.Name)
+		{
+			return;
+		}
+
+		var rename = new CancellationTokenSource();
+		Interlocked.Exchange(ref _rename, rename)?.Cancel();
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				await Task.Delay(RenameDelay, rename.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				return;
+			}
+
+			if (_port.State == DevicePortState.On && _port.Name != _device.Device.Name)
+			{
+				await SetPowerAsync(true).ConfigureAwait(false);
+			}
+		});
+	}
+
 	private void ApplyBindings()
 	{
 		if (_context is not { } context)
@@ -276,6 +477,81 @@ internal sealed class PluginIntegration :
 	}
 
 	private void OnStateChanged() => ScheduleRefresh();
+
+	private async Task<MixerArt?> RegisterMixerArtAsync(IIntegrationContext context)
+	{
+		try
+		{
+			async Task<MacroDeck.Ui.Model.Resources.UiResource> Register(string file, string mediaType) =>
+				await context.UiResources.RegisterAsync(
+					"mixer-" + Path.GetFileNameWithoutExtension(file),
+					await File.ReadAllBytesAsync(Path.Combine(MixerArt.Folder, file)).ConfigureAwait(false),
+					mediaType).ConfigureAwait(false);
+
+			return new MixerArt(await Register("brushed-metal.jpg", "image/jpeg").ConfigureAwait(false));
+		}
+		catch (Exception ex) when (ex is UiResourceException or IOException or UnauthorizedAccessException)
+		{
+			_logger.Warning(ex, "Mixer images unavailable; the mixer draws plain shapes.");
+			return null;
+		}
+	}
+
+	private void OnDeviceChanged()
+	{
+		RenamePorts();
+		_variables = [.. RouterVariables, .. DeviceActions.Variables(_device.Device)];
+		if (_context is { } context)
+		{
+			_ = NotifyDeclarationsAsync(context);
+		}
+	}
+
+	private async Task NotifyDeclarationsAsync(IIntegrationContext context)
+	{
+		try
+		{
+			await context.Variables.NotifyDeclarationsChangedAsync().ConfigureAwait(false);
+		}
+		catch (Exception ex)
+		{
+			_logger.Debug(ex, "The slider variables failed to update.");
+		}
+	}
+
+	private void OnSliderMoved(string variableId, int value)
+	{
+		lock (_sliderRefreshLock)
+		{
+			if (!_movedSliders.Add(variableId) || _movedSliders.Count > 1)
+			{
+				return;
+			}
+		}
+
+		_ = Task.Run(async () =>
+		{
+			await Task.Delay(StateDebounce).ConfigureAwait(false);
+			string[] moved;
+			lock (_sliderRefreshLock)
+			{
+				moved = [.. _movedSliders];
+				_movedSliders.Clear();
+			}
+
+			if (_context is { } context)
+			{
+				try
+				{
+					await context.Variables.RequestDefinitionRefreshAsync(moved).ConfigureAwait(false);
+				}
+				catch (Exception ex)
+				{
+					_logger.Debug(ex, "The slider variables failed to refresh.");
+				}
+			}
+		});
+	}
 
 	private void OnStatusChanged()
 	{
